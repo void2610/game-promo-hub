@@ -23,7 +23,7 @@
 - 基盤
   - `bot.py` は `setup_hook` で DB 初期化、scheduler 起動、cogs 読み込み、guild sync を実行する。
   - `config.py` は `.env` 読み込み、必須設定検証、パス定義、JST タイムゾーン定義を持つ。
-  - `.env.example`、`.gitignore`、`README.md`、`requirements.txt` を整備する。
+- `.env.example`、`.gitignore`、`README.md`、`pyproject.toml` を整備する。
 - DB / schema
   - `schema.sql` に仕様書の全テーブルを実装する。
   - 追加テーブル `schedule_slots`
@@ -135,4 +135,3 @@
 - `schedule_queue_cancel` は対象 draft/group を `rejected` に変更し、投稿対象から外す。
 - 画像寸法は必須ではないため、取得不能なら `width` / `height` は `NULL` を許容する。
 - `main` への push に必要な git remote と認証は既に利用可能である。
-
