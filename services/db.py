@@ -307,16 +307,19 @@ async def add_draft(data: dict[str, Any]) -> int:
             """
             INSERT INTO tweet_drafts (
                 draft_group_id, game_id, lang, content, asset_id, tone, strategy_note,
-                asset_reason, source_progress_ids, source_appeal_ids, status, discord_msg_id, approved_at
+                asset_reason, source_progress_ids, source_appeal_ids, status,
+                discord_msg_id, approved_by, approved_at
             )
             VALUES (
                 :draft_group_id, :game_id, :lang, :content, :asset_id, :tone, :strategy_note,
-                :asset_reason, :source_progress_ids, :source_appeal_ids, :status, :discord_msg_id, :approved_at
+                :asset_reason, :source_progress_ids, :source_appeal_ids, :status,
+                :discord_msg_id, :approved_by, :approved_at
             )
             """,
             {
                 "status": "pending",
                 "discord_msg_id": None,
+                "approved_by": None,
                 "approved_at": None,
                 **payload,
             },
@@ -366,6 +369,15 @@ async def update_draft_message(draft_id: int, discord_msg_id: str) -> None:
         await db.commit()
 
 
+async def update_draft_group_message(draft_group_id: str, discord_msg_id: str) -> None:
+    async with await _connect() as db:
+        await db.execute(
+            "UPDATE tweet_drafts SET discord_msg_id = ? WHERE draft_group_id = ?",
+            (discord_msg_id, draft_group_id),
+        )
+        await db.commit()
+
+
 async def reject_draft_group(draft_group_id: str | None, draft_id: int | None = None) -> None:
     async with await _connect() as db:
         if draft_group_id:
@@ -381,26 +393,30 @@ async def reject_draft_group(draft_group_id: str | None, draft_id: int | None = 
         await db.commit()
 
 
-async def approve_draft_group(draft_group_id: str | None, draft_id: int | None = None) -> None:
+async def approve_draft_group(
+    draft_group_id: str | None,
+    approved_by: str,
+    draft_id: int | None = None,
+) -> None:
     approved_at = _now_iso()
     async with await _connect() as db:
         if draft_group_id:
             await db.execute(
                 """
                 UPDATE tweet_drafts
-                SET status = 'approved', approved_at = ?
+                SET status = 'approved', approved_at = ?, approved_by = ?
                 WHERE draft_group_id = ? AND status = 'pending'
                 """,
-                (approved_at, draft_group_id),
+                (approved_at, approved_by, draft_group_id),
             )
         elif draft_id is not None:
             await db.execute(
                 """
                 UPDATE tweet_drafts
-                SET status = 'approved', approved_at = ?
+                SET status = 'approved', approved_at = ?, approved_by = ?
                 WHERE id = ? AND status = 'pending'
                 """,
-                (approved_at, draft_id),
+                (approved_at, approved_by, draft_id),
             )
         await db.commit()
 
@@ -443,6 +459,13 @@ async def mark_drafts_posted(draft_ids: list[int]) -> None:
             tuple(draft_ids),
         )
         await db.commit()
+
+
+async def get_queue_item(queue_id: str) -> list[dict[str, Any]]:
+    if queue_id.startswith("single:"):
+        draft = await get_draft(int(queue_id.split(":", 1)[1]))
+        return [draft] if draft else []
+    return await get_drafts_by_group(queue_id)
 
 
 async def consume_draft_sources(drafts: list[dict[str, Any]]) -> None:
@@ -617,4 +640,3 @@ async def pick_next_approved_draft_group() -> list[dict[str, Any]]:
         draft = await get_draft(draft_id)
         return [draft] if draft else []
     return await get_drafts_by_group(str(queue_id))
-

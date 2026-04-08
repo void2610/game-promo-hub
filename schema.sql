@@ -90,6 +90,7 @@ CREATE TABLE IF NOT EXISTS tweet_drafts (
     source_appeal_ids    TEXT,
     status               TEXT DEFAULT 'pending',
     discord_msg_id       TEXT,
+    approved_by          TEXT,
     approved_at          DATETIME,
     created_at           DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -124,4 +125,3 @@ CREATE INDEX IF NOT EXISTS idx_tweets_game_posted_at
 
 CREATE INDEX IF NOT EXISTS idx_tweet_drafts_status_group
     ON tweet_drafts(status, draft_group_id, approved_at ASC, created_at ASC);
-
