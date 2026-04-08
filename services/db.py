@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
@@ -32,15 +33,16 @@ class PromoContext:
     appeal_ids: list[int]
 
 
-async def _connect() -> aiosqlite.Connection:
-    db = await aiosqlite.connect(DB_PATH)
-    db.row_factory = aiosqlite.Row
-    await db.execute("PRAGMA foreign_keys = ON")
-    return db
+@asynccontextmanager
+async def _connect():
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        await db.execute("PRAGMA foreign_keys = ON")
+        yield db
 
 
 async def init_db() -> None:
-    async with await _connect() as db:
+    async with _connect() as db:
         await db.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
         await db.commit()
 
@@ -49,7 +51,7 @@ async def add_game(data: dict[str, Any]) -> None:
     payload = data.copy()
     payload["hashtags"] = _json_dumps(payload.get("hashtags"))
     payload["target_audience"] = _json_dumps(payload.get("target_audience"))
-    async with await _connect() as db:
+    async with _connect() as db:
         await db.execute(
             """
             INSERT INTO games (
@@ -78,19 +80,19 @@ def _hydrate_game(row: aiosqlite.Row | None) -> dict[str, Any] | None:
 
 
 async def get_game(game_id: str) -> dict[str, Any] | None:
-    async with await _connect() as db:
+    async with _connect() as db:
         async with db.execute("SELECT * FROM games WHERE id = ?", (game_id,)) as cursor:
             return _hydrate_game(await cursor.fetchone())
 
 
 async def list_games() -> list[dict[str, Any]]:
-    async with await _connect() as db:
+    async with _connect() as db:
         async with db.execute("SELECT * FROM games ORDER BY created_at DESC") as cursor:
             return [_hydrate_game(row) for row in await cursor.fetchall()]
 
 
 async def add_progress(data: dict[str, Any]) -> int:
-    async with await _connect() as db:
+    async with _connect() as db:
         cursor = await db.execute(
             """
             INSERT INTO progress_logs (
@@ -107,7 +109,7 @@ async def add_progress(data: dict[str, Any]) -> int:
 
 
 async def get_recent_progress(game_id: str, limit: int = 3) -> list[dict[str, Any]]:
-    async with await _connect() as db:
+    async with _connect() as db:
         async with db.execute(
             """
             SELECT * FROM progress_logs
@@ -124,7 +126,7 @@ async def mark_progress_tweeted(progress_ids: list[int]) -> None:
     if not progress_ids:
         return
     placeholders = ",".join("?" for _ in progress_ids)
-    async with await _connect() as db:
+    async with _connect() as db:
         await db.execute(
             f"UPDATE progress_logs SET tweeted = 1 WHERE id IN ({placeholders})",
             tuple(progress_ids),
@@ -133,7 +135,7 @@ async def mark_progress_tweeted(progress_ids: list[int]) -> None:
 
 
 async def add_appeal(data: dict[str, Any]) -> int:
-    async with await _connect() as db:
+    async with _connect() as db:
         cursor = await db.execute(
             """
             INSERT INTO appeal_points (game_id, category, priority, title, content, promo_tips)
@@ -160,7 +162,7 @@ async def get_appeals(
         params.append(category)
     query += " ORDER BY priority DESC, last_used_at IS NOT NULL, last_used_at ASC, created_at ASC LIMIT ?"
     params.append(limit)
-    async with await _connect() as db:
+    async with _connect() as db:
         async with db.execute(query, params) as cursor:
             return [dict(row) for row in await cursor.fetchall()]
 
@@ -169,7 +171,7 @@ async def mark_appeal_used(appeal_ids: list[int]) -> None:
     if not appeal_ids:
         return
     placeholders = ",".join("?" for _ in appeal_ids)
-    async with await _connect() as db:
+    async with _connect() as db:
         await db.execute(
             f"UPDATE appeal_points SET last_used_at = ? WHERE id IN ({placeholders})",
             (_now_iso(), *appeal_ids),
@@ -178,7 +180,7 @@ async def mark_appeal_used(appeal_ids: list[int]) -> None:
 
 
 async def add_asset(data: dict[str, Any]) -> int:
-    async with await _connect() as db:
+    async with _connect() as db:
         cursor = await db.execute(
             """
             INSERT INTO assets (
@@ -203,20 +205,20 @@ async def get_assets(game_id: str, recommended_for: str | None = None) -> list[d
         query += " AND (recommended_for = ? OR recommended_for = 'any')"
         params.append(recommended_for)
     query += " ORDER BY created_at DESC"
-    async with await _connect() as db:
+    async with _connect() as db:
         async with db.execute(query, params) as cursor:
             return [dict(row) for row in await cursor.fetchall()]
 
 
 async def get_asset_by_id(asset_id: int) -> dict[str, Any] | None:
-    async with await _connect() as db:
+    async with _connect() as db:
         async with db.execute("SELECT * FROM assets WHERE id = ?", (asset_id,)) as cursor:
             row = await cursor.fetchone()
             return dict(row) if row else None
 
 
 async def add_tweet(data: dict[str, Any]) -> int:
-    async with await _connect() as db:
+    async with _connect() as db:
         cursor = await db.execute(
             """
             INSERT INTO tweets (
@@ -236,7 +238,7 @@ async def add_tweet(data: dict[str, Any]) -> int:
 
 async def get_recent_tweets(game_id: str, days: int = 14) -> list[dict[str, Any]]:
     since = (datetime.now(JST) - timedelta(days=days)).isoformat()
-    async with await _connect() as db:
+    async with _connect() as db:
         async with db.execute(
             """
             SELECT * FROM tweets
@@ -250,7 +252,7 @@ async def get_recent_tweets(game_id: str, days: int = 14) -> list[dict[str, Any]
 
 async def get_recent_tweets_for_analytics(game_id: str, days: int = 90) -> list[dict[str, Any]]:
     since = (datetime.now(JST) - timedelta(days=days)).isoformat()
-    async with await _connect() as db:
+    async with _connect() as db:
         async with db.execute(
             """
             SELECT * FROM tweets
@@ -269,7 +271,7 @@ async def update_tweet_analytics(
     retweets: int,
     replies: int,
 ) -> None:
-    async with await _connect() as db:
+    async with _connect() as db:
         await db.execute(
             """
             UPDATE tweets
@@ -282,7 +284,7 @@ async def update_tweet_analytics(
 
 
 async def get_top_tweets(game_id: str, limit: int = 5) -> list[dict[str, Any]]:
-    async with await _connect() as db:
+    async with _connect() as db:
         async with db.execute(
             """
             SELECT *,
@@ -302,16 +304,16 @@ async def add_draft(data: dict[str, Any]) -> int:
     payload = data.copy()
     payload["source_progress_ids"] = _json_dumps(payload.get("source_progress_ids"))
     payload["source_appeal_ids"] = _json_dumps(payload.get("source_appeal_ids"))
-    async with await _connect() as db:
+    async with _connect() as db:
         cursor = await db.execute(
             """
             INSERT INTO tweet_drafts (
-                draft_group_id, game_id, lang, content, asset_id, tone, strategy_note,
+                draft_group_id, game_id, mode, lang, content, asset_id, tone, strategy_note,
                 asset_reason, source_progress_ids, source_appeal_ids, status,
                 discord_msg_id, approved_by, approved_at
             )
             VALUES (
-                :draft_group_id, :game_id, :lang, :content, :asset_id, :tone, :strategy_note,
+                :draft_group_id, :game_id, :mode, :lang, :content, :asset_id, :tone, :strategy_note,
                 :asset_reason, :source_progress_ids, :source_appeal_ids, :status,
                 :discord_msg_id, :approved_by, :approved_at
             )
@@ -342,13 +344,13 @@ def _hydrate_draft(row: aiosqlite.Row | None) -> dict[str, Any] | None:
 
 
 async def get_draft(draft_id: int) -> dict[str, Any] | None:
-    async with await _connect() as db:
+    async with _connect() as db:
         async with db.execute("SELECT * FROM tweet_drafts WHERE id = ?", (draft_id,)) as cursor:
             return _hydrate_draft(await cursor.fetchone())
 
 
 async def get_drafts_by_group(draft_group_id: str) -> list[dict[str, Any]]:
-    async with await _connect() as db:
+    async with _connect() as db:
         async with db.execute(
             """
             SELECT * FROM tweet_drafts
@@ -361,7 +363,7 @@ async def get_drafts_by_group(draft_group_id: str) -> list[dict[str, Any]]:
 
 
 async def update_draft_message(draft_id: int, discord_msg_id: str) -> None:
-    async with await _connect() as db:
+    async with _connect() as db:
         await db.execute(
             "UPDATE tweet_drafts SET discord_msg_id = ? WHERE id = ?",
             (discord_msg_id, draft_id),
@@ -370,7 +372,7 @@ async def update_draft_message(draft_id: int, discord_msg_id: str) -> None:
 
 
 async def update_draft_group_message(draft_group_id: str, discord_msg_id: str) -> None:
-    async with await _connect() as db:
+    async with _connect() as db:
         await db.execute(
             "UPDATE tweet_drafts SET discord_msg_id = ? WHERE draft_group_id = ?",
             (discord_msg_id, draft_group_id),
@@ -379,7 +381,7 @@ async def update_draft_group_message(draft_group_id: str, discord_msg_id: str) -
 
 
 async def reject_draft_group(draft_group_id: str | None, draft_id: int | None = None) -> None:
-    async with await _connect() as db:
+    async with _connect() as db:
         if draft_group_id:
             await db.execute(
                 "UPDATE tweet_drafts SET status = 'rejected' WHERE draft_group_id = ?",
@@ -399,7 +401,7 @@ async def approve_draft_group(
     draft_id: int | None = None,
 ) -> None:
     approved_at = _now_iso()
-    async with await _connect() as db:
+    async with _connect() as db:
         if draft_group_id:
             await db.execute(
                 """
@@ -422,7 +424,7 @@ async def approve_draft_group(
 
 
 async def list_approved_queue(limit: int = 10) -> list[dict[str, Any]]:
-    async with await _connect() as db:
+    async with _connect() as db:
         async with db.execute(
             """
             SELECT
@@ -453,7 +455,7 @@ async def mark_drafts_posted(draft_ids: list[int]) -> None:
     if not draft_ids:
         return
     placeholders = ",".join("?" for _ in draft_ids)
-    async with await _connect() as db:
+    async with _connect() as db:
         await db.execute(
             f"UPDATE tweet_drafts SET status = 'posted' WHERE id IN ({placeholders})",
             tuple(draft_ids),
@@ -479,7 +481,7 @@ async def consume_draft_sources(drafts: list[dict[str, Any]]) -> None:
 
 
 async def save_analytics_summary(game_id: str, period: str, result: dict[str, Any]) -> None:
-    async with await _connect() as db:
+    async with _connect() as db:
         await db.execute(
             """
             INSERT INTO analytics_summaries (
@@ -501,7 +503,7 @@ async def save_analytics_summary(game_id: str, period: str, result: dict[str, An
 
 
 async def add_schedule_slot(slot_time: str) -> int:
-    async with await _connect() as db:
+    async with _connect() as db:
         cursor = await db.execute(
             "INSERT INTO schedule_slots (slot_time, enabled) VALUES (?, 1)",
             (slot_time,),
@@ -511,7 +513,7 @@ async def add_schedule_slot(slot_time: str) -> int:
 
 
 async def list_schedule_slots() -> list[dict[str, Any]]:
-    async with await _connect() as db:
+    async with _connect() as db:
         async with db.execute(
             "SELECT * FROM schedule_slots ORDER BY slot_time ASC"
         ) as cursor:
@@ -519,13 +521,13 @@ async def list_schedule_slots() -> list[dict[str, Any]]:
 
 
 async def remove_schedule_slot(slot_id: int) -> None:
-    async with await _connect() as db:
+    async with _connect() as db:
         await db.execute("DELETE FROM schedule_slots WHERE id = ?", (slot_id,))
         await db.commit()
 
 
 async def get_slot_by_time(slot_time: str) -> dict[str, Any] | None:
-    async with await _connect() as db:
+    async with _connect() as db:
         async with db.execute(
             "SELECT * FROM schedule_slots WHERE slot_time = ? AND enabled = 1",
             (slot_time,),
@@ -595,7 +597,7 @@ async def build_promo_context(game_id: str, mode: str) -> PromoContext:
 
 
 async def pick_next_approved_draft_group() -> list[dict[str, Any]]:
-    async with await _connect() as db:
+    async with _connect() as db:
         async with db.execute(
             """
             WITH approved_groups AS (

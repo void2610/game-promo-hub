@@ -80,6 +80,7 @@ CREATE TABLE IF NOT EXISTS tweet_drafts (
     id                   INTEGER PRIMARY KEY AUTOINCREMENT,
     draft_group_id       TEXT,
     game_id              TEXT NOT NULL REFERENCES games(id),
+    mode                 TEXT,
     lang                 TEXT,
     content              TEXT NOT NULL,
     asset_id             INTEGER REFERENCES assets(id),

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sqlite3
+
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -36,22 +38,29 @@ class GameAddModal(discord.ui.Modal, title="ゲーム登録"):
             key, value = line.split("=", 1)
             detail_map[key.strip()] = value.strip()
 
-        await db.add_game(
-            {
-                "id": str(self.game_id).strip(),
-                "name_ja": str(self.name_ja).strip(),
-                "name_en": str(self.name_en).strip() or None,
-                "genre": str(self.genre).strip() or None,
-                "platform": detail_map.get("platform", "Steam"),
-                "status": detail_map.get("status", "development"),
-                "steam_url": detail_map.get("steam_url"),
-                "elevator_ja": detail_map.get("elevator_ja"),
-                "elevator_en": detail_map.get("elevator_en"),
-                "hashtags": parse_list_input(str(self.hashtags)),
-                "target_audience": parse_list_input(detail_map.get("target_audience", "")),
-                "circle": detail_map.get("circle"),
-            }
-        )
+        try:
+            await db.add_game(
+                {
+                    "id": str(self.game_id).strip(),
+                    "name_ja": str(self.name_ja).strip(),
+                    "name_en": str(self.name_en).strip() or None,
+                    "genre": str(self.genre).strip() or None,
+                    "platform": detail_map.get("platform", "Steam"),
+                    "status": detail_map.get("status", "development"),
+                    "steam_url": detail_map.get("steam_url"),
+                    "elevator_ja": detail_map.get("elevator_ja"),
+                    "elevator_en": detail_map.get("elevator_en"),
+                    "hashtags": parse_list_input(str(self.hashtags)),
+                    "target_audience": parse_list_input(detail_map.get("target_audience", "")),
+                    "circle": detail_map.get("circle"),
+                }
+            )
+        except sqlite3.IntegrityError:
+            await interaction.response.send_message(
+                f"ゲームID `{str(self.game_id).strip()}` は既に登録されています。",
+                ephemeral=True,
+            )
+            return
         game = await db.get_game(str(self.game_id).strip())
         embed = discord.Embed(title="ゲームを登録しました", color=0x3BA55D)
         embed.add_field(name="ID", value=game["id"])
@@ -95,4 +104,3 @@ class GameCog(commands.Cog):
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(GameCog(bot))
-

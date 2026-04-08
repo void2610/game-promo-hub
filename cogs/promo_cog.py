@@ -43,7 +43,7 @@ class ApprovalView(discord.ui.View):
             interaction,
             game_id=draft["game_id"],
             tone=draft.get("tone") or "casual",
-            mode="random",
+            mode=draft.get("mode") or "random",
             lang="both" if self.draft_group_id else (draft.get("lang") or "ja"),
         )
         self.stop()
@@ -117,6 +117,7 @@ class PromoCog(commands.Cog):
                     {
                         "draft_group_id": draft_group_id,
                         "game_id": game_id,
+                        "mode": mode,
                         "lang": language,
                         "content": content or "",
                         "asset_id": asset["id"] if asset else None,

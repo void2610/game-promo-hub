@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 from datetime import datetime
 
 import discord
@@ -29,6 +30,9 @@ class ScheduleCog(commands.Cog):
             slot_id = await db.add_schedule_slot(slot_time)
         except ValueError:
             await interaction.response.send_message("時刻は HH:MM 形式で指定してください。", ephemeral=True)
+            return
+        except sqlite3.IntegrityError:
+            await interaction.response.send_message("その時刻のスロットは既に存在します。", ephemeral=True)
             return
         await interaction.response.send_message(
             f"スロット #{slot_id} を {slot_time} JST に追加しました。",
@@ -93,4 +97,3 @@ class ScheduleCog(commands.Cog):
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(ScheduleCog(bot))
-
