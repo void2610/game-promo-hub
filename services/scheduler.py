@@ -142,10 +142,6 @@ async def dispatch_scheduled_posts(bot) -> bool:
     return True
 
 
-# Twitter API v2 の get_tweets エンドポイントは 1 リクエストあたり最大 100 件
-_TWITTER_BATCH_SIZE = 100
-
-
 async def dispatch_analytics(bot) -> int:
     """すべてのゲームの直近 90 日間のツイートのメトリクスを取得し、結果を蓄積する。
 
@@ -173,13 +169,10 @@ async def dispatch_analytics(bot) -> int:
     if not all_tweet_ids:
         return 0
 
-    # 100 件ずつバッチで Twitter API を呼び出す
-    total_updated = 0
-    for i in range(0, len(all_tweet_ids), _TWITTER_BATCH_SIZE):
-        batch = all_tweet_ids[i : i + _TWITTER_BATCH_SIZE]
-        metrics = await twitter.fetch_tweet_metrics(batch)
-        await db.batch_update_tweet_analytics(metrics)
-        total_updated += len(metrics)
+    # スクレイピングは fetch_tweet_metrics 内で逐次処理されるため、まとめて渡す
+    metrics = await twitter.fetch_tweet_metrics(all_tweet_ids)
+    await db.batch_update_tweet_analytics(metrics)
+    total_updated = len(metrics)
 
     LOGGER.info("Auto-analytics: updated %d tweet metrics snapshots", total_updated)
     return total_updated
