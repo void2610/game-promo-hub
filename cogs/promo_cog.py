@@ -69,6 +69,59 @@ class PromoCog(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
+    @app_commands.command(name="draft_list", description="既存の下書きを一覧表示する")
+    async def draft_list(
+        self,
+        interaction: discord.Interaction,
+        game_id: str | None = None,
+    ) -> None:
+        """指定したゲーム（または全ゲーム）の pending 下書きと承認済みキューを表示する。"""
+        if not await ensure_allowed(interaction):
+            return
+        await interaction.response.defer(ephemeral=True)
+
+        pending = await db.list_pending_drafts(game_id=game_id, limit=10)
+        approved = await db.list_approved_queue(limit=10)
+        if game_id:
+            approved = [item for item in approved if item["game_id"] == game_id]
+
+        if not pending and not approved:
+            label = f"`{game_id}` の" if game_id else ""
+            await interaction.followup.send(f"{label}下書きはありません。", ephemeral=True)
+            return
+
+        embed = discord.Embed(
+            title=f"下書き一覧{f' / {game_id}' if game_id else ''}",
+            color=0x5865F2,
+        )
+
+        if pending:
+            lines = []
+            for draft in pending:
+                lang = draft.get("lang") or "-"
+                tone = draft.get("tone") or "-"
+                preview = (draft.get("content") or "")[:60]
+                lines.append(f"**#{draft['id']}** [{lang}] {tone} — {preview}")
+            embed.add_field(
+                name=f"⏳ 承認待ち ({len(pending)} 件)",
+                value="\n".join(lines),
+                inline=False,
+            )
+
+        if approved:
+            lines = []
+            for item in approved:
+                langs = ", ".join(item.get("langs") or [])
+                approved_at = str(item.get("approved_at") or "")[:10]
+                lines.append(f"**{item['queue_id']}** [{langs}] {item['game_id']} {approved_at}")
+            embed.add_field(
+                name=f"✅ 承認済みキュー ({len(approved)} 件)",
+                value="\n".join(lines),
+                inline=False,
+            )
+
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
     @app_commands.command(name="promo_draft", description="ツイート下書きを生成する")
     async def promo_draft(
         self,
@@ -108,6 +161,15 @@ class PromoCog(commands.Cog):
         if not game:
             await interaction.followup.send(f"ゲーム `{game_id}` が見つかりません。", ephemeral=True)
             return
+
+        # 既存の承認待ち下書きがある場合は件数を通知する
+        existing = await db.list_pending_drafts(game_id=game_id)
+        if existing:
+            await interaction.followup.send(
+                f"`{game_id}` には承認待ちの下書きが {len(existing)} 件あります。"
+                " `/draft_list` で確認できます。引き続き生成します。",
+                ephemeral=True,
+            )
 
         await interaction.followup.send(f"`{game_id}` の下書きを生成中です。", ephemeral=True)
         context = await db.build_promo_context(game_id, mode)

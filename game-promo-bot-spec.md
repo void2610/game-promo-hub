@@ -1094,10 +1094,16 @@ JSONのみを返すこと。余分なテキスト不要。
 | `/progress_add <game_id>` | 進捗をモーダルで追加 |
 | `/appeal_add <game_id>` | アピールポイントを追加 |
 | `/asset_add <game_id>` | 素材ファイルを添付して登録 |
-| `/promo_draft <game_id> [mode] [lang] [tone]` | ツイート下書き生成・承認UI表示 |
+| `/promo_draft <game_id> [mode] [lang] [tone]` | ツイート下書き生成・承認UI表示。既存の承認待ち下書きがある場合は件数を通知 |
+| `/draft_list [game_id]` | 既存の承認待ち下書きと承認済みキューを一覧表示 |
 | `/analytics_fetch <game_id>` | インプレッションをTwitterから取得・DB更新 |
 | `/analytics_report <game_id> [period]` | LLMで分析レポート生成 |
 | `/analytics_top <game_id> [limit]` | エンゲージメント上位ツイート表示 |
+| `/schedule_slot_add <time_jst>` | 定期投稿スロットを追加（HH:MM 形式 JST） |
+| `/schedule_slot_list` | 定期投稿スロット一覧表示 |
+| `/schedule_slot_remove <slot_id>` | 定期投稿スロットを削除 |
+| `/schedule_queue_list [limit]` | 承認済みキューを表示 |
+| `/schedule_queue_cancel <queue_id>` | 承認済みキューを取り消し（rejected に変更） |
 
 ---
 

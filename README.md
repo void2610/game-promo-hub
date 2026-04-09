@@ -44,6 +44,7 @@ uv run python -m compileall bot.py cogs services tests
 | `/appeal_add` | アピールポイントを追加する |
 | `/asset_add` | 添付ファイルを素材として登録する |
 | `/promo_draft` | ツイート下書きを AI で生成する |
+| `/draft_list` | 既存の下書き（承認待ち・承認済み）を一覧表示する |
 | `/analytics_fetch` | X/Twitter のメトリクスを取得する |
 | `/analytics_report` | 宣伝分析レポートを生成する |
 | `/analytics_top` | エンゲージメント上位投稿を表示する |
@@ -60,8 +61,9 @@ Discord
   └─ スラッシュコマンド
        ├─ /game_add・/progress_add・/appeal_add・/asset_add
        │    ゲーム情報・進捗・アピール・素材を SQLite に登録
-       ├─ /promo_draft
+       ├─ /promo_draft・/draft_list
        │    Claude CLI でツイート下書きを生成 → 承認ボタンで承認キューへ追加
+       │    /draft_list で承認待ち・承認済み下書きを確認
        ├─ /analytics_fetch・/analytics_report・/analytics_top
        │    Twitter/X API でメトリクスを取得 → Claude CLI で分析レポートを生成
        └─ /schedule_slot_add・/schedule_queue_*

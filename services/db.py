@@ -488,6 +488,30 @@ async def list_approved_queue(limit: int = 10) -> list[dict[str, Any]]:
             return rows
 
 
+async def list_pending_drafts(game_id: str | None = None, limit: int = 20) -> list[dict[str, Any]]:
+    """承認待ち（pending）の下書きを作成日時の降順で返す。
+
+    Args:
+        game_id: 絞り込むゲーム ID。None の場合はすべてのゲームを対象にする。
+        limit: 返す最大件数。
+
+    Returns:
+        source_progress_ids / source_appeal_ids を Python リストに変換した下書き辞書のリスト。
+    """
+    if game_id:
+        query = (
+            "SELECT * FROM tweet_drafts WHERE status = 'pending' AND game_id = ?"
+            " ORDER BY created_at DESC LIMIT ?"
+        )
+        params: tuple = (game_id, limit)
+    else:
+        query = "SELECT * FROM tweet_drafts WHERE status = 'pending' ORDER BY created_at DESC LIMIT ?"
+        params = (limit,)
+    async with _connect() as db:
+        async with db.execute(query, params) as cursor:
+            return [_hydrate_draft(row) for row in await cursor.fetchall()]
+
+
 async def mark_drafts_posted(draft_ids: list[int]) -> None:
     """指定した下書き ID を "posted" ステータスに更新する。"""
     if not draft_ids:
