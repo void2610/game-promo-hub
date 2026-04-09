@@ -82,7 +82,7 @@ VOID RED (void-red)
 | 宣伝ヒント | `新しいギミックの動画クリップがある。視覚的に映えるので投稿素材にしたい。` |
 | 日付 | `2025-01-15`（デフォルトは今日） |
 
-> **excitement について**: 3はマイルストーン達成などの重要な出来事に使います。2は通常の進捗、1は軽微な更新に使います。AIが下書きを生成する際に、高い excitement の進捗が優先されます。
+> **excitement について**: 3はマイルストーン達成などの重要な出来事に使います。2は通常の進捗、1は軽微な更新に使います。値はAIが下書きを生成する際の参考情報としてコンテキストに含まれます。
 
 ---
 
@@ -240,7 +240,7 @@ The new puddle-jumping mechanic is so satisfying we kept replaying it during dev
 #13 [en] casual — 🌿 New stage "Misty Garden" is compl...
 
 ✅ 承認済みキュー (1 件)
-grp:abc123 [ja, en] niwa-kobito 2025-01-15
+9f3c2a1b4d6e7f8091a2b3c4d5e6f789 [ja, en] niwa-kobito 2025-01-15
 ```
 
 ---
@@ -303,7 +303,7 @@ grp:abc123 [ja, en] niwa-kobito 2025-01-15
 ```
 承認済みキュー
 ────────────────────────
-grp:abc123
+9f3c2a1b4d6e7f8091a2b3c4d5e6f789
   game: niwa-kobito
   approved_at: 2025-01-15
   langs: ja, en
@@ -321,7 +321,7 @@ single:45
 間違って承認した下書きをキューから外します。
 
 ```
-/schedule_queue_cancel queue_id:grp:abc123
+/schedule_queue_cancel queue_id:9f3c2a1b4d6e7f8091a2b3c4d5e6f789
 ```
 
 単一の下書きの場合:
@@ -368,7 +368,7 @@ AIがツイートデータを分析して、改善提案を生成します。
 /analytics_report game_id:niwa-kobito
 ```
 
-特定の月を指定する場合（デフォルトは今月）:
+レポートのラベル（YYYY-MM）を指定する場合（デフォルトは今月）:
 
 ```
 /analytics_report game_id:niwa-kobito period:2025-01
