@@ -9,4 +9,5 @@ assets/*
 test-results/
 .mypy_cache/
 .DS_Store
+twitter_session.json
 
