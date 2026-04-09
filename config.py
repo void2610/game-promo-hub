@@ -23,6 +23,8 @@ SCHEMA_PATH = BASE_DIR / "schema.sql"
 CLAUDE_TIMEOUT = int(os.getenv("CLAUDE_TIMEOUT", "120"))
 # スケジューラのポーリング間隔（秒）
 SCHEDULER_POLL_SECONDS = int(os.getenv("SCHEDULER_POLL_SECONDS", "30"))
+# 自動アナリティクス実行間隔（時間）。この間隔ごとにメトリクスを取得して履歴に蓄積する
+ANALYTICS_FETCH_INTERVAL_HOURS = int(os.getenv("ANALYTICS_FETCH_INTERVAL_HOURS", "6"))
 # 日本標準時タイムゾーン
 JST = ZoneInfo("Asia/Tokyo")
 

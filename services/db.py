@@ -102,6 +102,13 @@ async def list_games() -> list[dict[str, Any]]:
             return [_hydrate_game(row) for row in await cursor.fetchall()]
 
 
+async def get_all_game_ids() -> list[str]:
+    """登録されているすべてのゲーム ID のリストを返す。自動アナリティクス用。"""
+    async with _connect() as db:
+        async with db.execute("SELECT id FROM games ORDER BY id ASC") as cursor:
+            return [row[0] for row in await cursor.fetchall()]
+
+
 async def add_progress(data: dict[str, Any]) -> int:
     """進捗ログを progress_logs テーブルに追加し、発行された ID を返す。"""
     async with _connect() as db:
@@ -294,7 +301,10 @@ async def update_tweet_analytics(
     retweets: int,
     replies: int,
 ) -> None:
-    """ツイートのパブリックメトリクスを更新し、取得日時を記録する。"""
+    """ツイートのパブリックメトリクスを更新し、取得日時を記録する。
+    また tweet_metrics_history にスナップショットを追加して時系列データを蓄積する。
+    """
+    now = _now_iso()
     async with _connect() as db:
         await db.execute(
             """
@@ -302,9 +312,88 @@ async def update_tweet_analytics(
             SET impressions = ?, likes = ?, retweets = ?, replies = ?, analytics_fetched_at = ?
             WHERE tweet_id = ?
             """,
-            (impressions, likes, retweets, replies, _now_iso(), tweet_id),
+            (impressions, likes, retweets, replies, now, tweet_id),
+        )
+        await db.execute(
+            """
+            INSERT INTO tweet_metrics_history (tweet_id, impressions, likes, retweets, replies, fetched_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (tweet_id, impressions, likes, retweets, replies, now),
         )
         await db.commit()
+
+
+async def batch_update_tweet_analytics(metrics: list[dict[str, Any]]) -> None:
+    """複数ツイートのメトリクスを1トランザクションで一括更新する。
+
+    tweets テーブルを最新値で上書きし、tweet_metrics_history にスナップショットを追記する。
+    1件ずつ呼び出す update_tweet_analytics と異なり、接続・コミットを1回で完結させる。
+    """
+    if not metrics:
+        return
+    now = _now_iso()
+    tweet_params = [
+        (item["impressions"], item["likes"], item["retweets"], item["replies"], now, item["tweet_id"])
+        for item in metrics
+    ]
+    history_params = [
+        (item["tweet_id"], item["impressions"], item["likes"], item["retweets"], item["replies"], now)
+        for item in metrics
+    ]
+    async with _connect() as db:
+        await db.executemany(
+            """
+            UPDATE tweets
+            SET impressions = ?, likes = ?, retweets = ?, replies = ?, analytics_fetched_at = ?
+            WHERE tweet_id = ?
+            """,
+            tweet_params,
+        )
+        await db.executemany(
+            """
+            INSERT INTO tweet_metrics_history (tweet_id, impressions, likes, retweets, replies, fetched_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            history_params,
+        )
+        await db.commit()
+
+
+async def insert_tweet_metrics_snapshot(
+    tweet_id: str,
+    impressions: int,
+    likes: int,
+    retweets: int,
+    replies: int,
+) -> None:
+    """tweet_metrics_history にスナップショットを単独で追加する。
+    tweets テーブルは更新しない（履歴の直接挿入のみ）。
+    """
+    async with _connect() as db:
+        await db.execute(
+            """
+            INSERT INTO tweet_metrics_history (tweet_id, impressions, likes, retweets, replies, fetched_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (tweet_id, impressions, likes, retweets, replies, _now_iso()),
+        )
+        await db.commit()
+
+
+async def get_tweet_metrics_history(tweet_id: str) -> list[dict[str, Any]]:
+    """指定したツイート ID のメトリクス履歴を取得日時の昇順で返す。"""
+    async with _connect() as db:
+        async with db.execute(
+            """
+            SELECT tweet_id, impressions, likes, retweets, replies, fetched_at
+            FROM tweet_metrics_history
+            WHERE tweet_id = ?
+            ORDER BY fetched_at ASC
+            """,
+            (tweet_id,),
+        ) as cursor:
+            return [dict(row) for row in await cursor.fetchall()]
 
 
 async def get_top_tweets(game_id: str, limit: int = 5) -> list[dict[str, Any]]:

@@ -5,7 +5,7 @@ from discord.ext import commands
 
 from config import DISCORD_GUILD_ID, DISCORD_TOKEN, validate_discord_config
 from services.db import init_db
-from services.scheduler import dispatch_scheduled_posts, setup_scheduler
+from services.scheduler import dispatch_analytics, dispatch_scheduled_posts, setup_scheduler
 
 # 読み込む Cog（機能モジュール）の一覧
 EXTENSIONS = (
@@ -34,6 +34,10 @@ class PromoBot(commands.Bot):
     async def dispatch_scheduled_posts(self) -> bool:
         """スケジューラから呼ばれる定期投稿の実行。"""
         return await dispatch_scheduled_posts(self)
+
+    async def dispatch_analytics(self) -> int:
+        """スケジューラから呼ばれる自動アナリティクス取得の実行。"""
+        return await dispatch_analytics(self)
 
 
 def build_bot() -> PromoBot:

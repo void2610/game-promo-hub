@@ -7,7 +7,7 @@ from datetime import datetime
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
-from config import JST, SCHEDULER_POLL_SECONDS
+from config import ANALYTICS_FETCH_INTERVAL_HOURS, JST, SCHEDULER_POLL_SECONDS
 from services import db, twitter
 
 LOGGER = logging.getLogger(__name__)
@@ -35,6 +35,22 @@ def setup_scheduler(bot) -> AsyncIOScheduler:
         max_instances=1,
         coalesce=True,
     )
+    if ANALYTICS_FETCH_INTERVAL_HOURS > 0:
+        scheduler.add_job(
+            _analytics_tick,
+            IntervalTrigger(hours=ANALYTICS_FETCH_INTERVAL_HOURS),
+            args=[bot],
+            id="analytics-tick",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+        )
+    else:
+        LOGGER.warning(
+            "ANALYTICS_FETCH_INTERVAL_HOURS=%d は無効な値です（正の整数を指定してください）。"
+            "自動アナリティクス取得ジョブを登録しませんでした。",
+            ANALYTICS_FETCH_INTERVAL_HOURS,
+        )
     scheduler.start()
     _scheduler = scheduler
     return scheduler
@@ -50,6 +66,18 @@ async def _tick(bot) -> None:
         raise
     except Exception:
         LOGGER.exception("Scheduled dispatch failed")
+
+
+async def _analytics_tick(bot) -> None:
+    """スケジューラから定期的に呼ばれるアナリティクス自動取得処理。例外はログに記録してスキップする。"""
+    if not hasattr(bot, "dispatch_analytics"):
+        return
+    try:
+        await bot.dispatch_analytics()
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        LOGGER.exception("Scheduled analytics failed")
 
 
 async def dispatch_scheduled_posts(bot) -> bool:
@@ -112,3 +140,46 @@ async def dispatch_scheduled_posts(bot) -> bool:
     await db.consume_draft_sources(drafts)
     _last_slot_key = slot_key
     return True
+
+
+# Twitter API v2 の get_tweets エンドポイントは 1 リクエストあたり最大 100 件
+_TWITTER_BATCH_SIZE = 100
+
+
+async def dispatch_analytics(bot) -> int:
+    """すべてのゲームの直近 90 日間のツイートのメトリクスを取得し、結果を蓄積する。
+
+    Twitter API の制限に対応するため、100 件ずつバッチ処理する。
+    tweets テーブルを最新値で更新しつつ、tweet_metrics_history にスナップショットを追加する。
+
+    Returns:
+        更新したメトリクス件数の合計。
+    """
+    game_ids = await db.get_all_game_ids()
+    if not game_ids:
+        return 0
+
+    # 全ゲームの tweet_id を収集する（重複は除去）
+    all_tweet_ids: list[str] = []
+    seen: set[str] = set()
+    for game_id in game_ids:
+        tweets = await db.get_recent_tweets_for_analytics(game_id, days=90)
+        for tweet in tweets:
+            tid = tweet.get("tweet_id")
+            if tid and tid not in seen:
+                all_tweet_ids.append(tid)
+                seen.add(tid)
+
+    if not all_tweet_ids:
+        return 0
+
+    # 100 件ずつバッチで Twitter API を呼び出す
+    total_updated = 0
+    for i in range(0, len(all_tweet_ids), _TWITTER_BATCH_SIZE):
+        batch = all_tweet_ids[i : i + _TWITTER_BATCH_SIZE]
+        metrics = await twitter.fetch_tweet_metrics(batch)
+        await db.batch_update_tweet_analytics(metrics)
+        total_updated += len(metrics)
+
+    LOGGER.info("Auto-analytics: updated %d tweet metrics snapshots", total_updated)
+    return total_updated

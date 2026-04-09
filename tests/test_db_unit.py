@@ -873,6 +873,140 @@ class DbOperationTests(unittest.IsolatedAsyncioTestCase):
         pending = await db.list_pending_drafts(game_id="game-x")
         self.assertEqual(pending, [])
 
+    # ---- tweet_metrics_history テーブル ----
+
+    async def test_update_tweet_analytics_inserts_history(self) -> None:
+        """update_tweet_analytics を呼ぶと tweet_metrics_history に履歴が追記されることを確認する。"""
+        import config as cfg
+        from datetime import datetime
+
+        await self._add_game()
+        now_iso = datetime.now(cfg.JST).isoformat()
+        await db.add_tweet(
+            {
+                "tweet_id": "tweet-hist-01",
+                "game_id": "game-x",
+                "lang": "ja",
+                "content": "History test",
+                "asset_id": None,
+                "tone": "casual",
+                "strategy_note": None,
+                "posted_at": now_iso,
+                "tweet_url": "https://twitter.com/i/web/status/tweet-hist-01",
+                "approved_by": "1",
+                "reply_to_tweet_id": None,
+            }
+        )
+        await db.update_tweet_analytics("tweet-hist-01", impressions=100, likes=5, retweets=2, replies=1)
+        await db.update_tweet_analytics("tweet-hist-01", impressions=200, likes=10, retweets=4, replies=2)
+        history = await db.get_tweet_metrics_history("tweet-hist-01")
+        self.assertEqual(len(history), 2)
+        self.assertEqual(history[0]["impressions"], 100)
+        self.assertEqual(history[1]["impressions"], 200)
+
+    async def test_get_tweet_metrics_history_empty(self) -> None:
+        """メトリクス履歴がない tweet_id に対して空リストが返されることを確認する。"""
+        result = await db.get_tweet_metrics_history("no-such-tweet")
+        self.assertEqual(result, [])
+
+    async def test_get_tweet_metrics_history_ordered_by_fetched_at(self) -> None:
+        """get_tweet_metrics_history が fetched_at の昇順で返されることを確認する。"""
+        import config as cfg
+        from datetime import datetime
+
+        await self._add_game()
+        now_iso = datetime.now(cfg.JST).isoformat()
+        await db.add_tweet(
+            {
+                "tweet_id": "tweet-hist-02",
+                "game_id": "game-x",
+                "lang": "ja",
+                "content": "Order test",
+                "asset_id": None,
+                "tone": "casual",
+                "strategy_note": None,
+                "posted_at": now_iso,
+                "tweet_url": "https://twitter.com/i/web/status/tweet-hist-02",
+                "approved_by": "1",
+                "reply_to_tweet_id": None,
+            }
+        )
+        for imp in [50, 150, 300]:
+            await db.update_tweet_analytics("tweet-hist-02", impressions=imp, likes=0, retweets=0, replies=0)
+        history = await db.get_tweet_metrics_history("tweet-hist-02")
+        impressions = [row["impressions"] for row in history]
+        self.assertEqual(impressions, [50, 150, 300])
+
+    async def test_insert_tweet_metrics_snapshot_standalone(self) -> None:
+        """insert_tweet_metrics_snapshot が tweets テーブルに依存せず動作することを確認する。"""
+        await db.insert_tweet_metrics_snapshot("standalone-id", impressions=42, likes=1, retweets=0, replies=0)
+        history = await db.get_tweet_metrics_history("standalone-id")
+        self.assertEqual(len(history), 1)
+        self.assertEqual(history[0]["impressions"], 42)
+
+    # ---- get_all_game_ids ----
+
+    async def test_get_all_game_ids_empty(self) -> None:
+        """ゲームが登録されていない場合に空リストが返されることを確認する。"""
+        result = await db.get_all_game_ids()
+        self.assertEqual(result, [])
+
+    async def test_get_all_game_ids_returns_all(self) -> None:
+        """登録されたすべてのゲーム ID が返されることを確認する。"""
+        await self._add_game("game-alpha", "Alpha")
+        await self._add_game("game-beta", "Beta")
+        ids = await db.get_all_game_ids()
+        self.assertIn("game-alpha", ids)
+        self.assertIn("game-beta", ids)
+        self.assertEqual(len(ids), 2)
+
+    # ---- batch_update_tweet_analytics ----
+
+    async def test_batch_update_tweet_analytics_updates_tweets_and_history(self) -> None:
+        """batch_update_tweet_analytics が tweets を更新し、履歴を一括挿入することを確認する。"""
+        import config as cfg
+        from datetime import datetime
+
+        await self._add_game("batch-game", "Batch Game")
+        now_iso = datetime.now(cfg.JST).isoformat()
+        for tid in ["batch-tweet-01", "batch-tweet-02"]:
+            await db.add_tweet(
+                {
+                    "tweet_id": tid,
+                    "game_id": "batch-game",
+                    "lang": "ja",
+                    "content": f"content {tid}",
+                    "asset_id": None,
+                    "tone": "casual",
+                    "strategy_note": None,
+                    "posted_at": now_iso,
+                    "tweet_url": f"https://twitter.com/i/web/status/{tid}",
+                    "approved_by": "1",
+                    "reply_to_tweet_id": None,
+                }
+            )
+        metrics = [
+            {"tweet_id": "batch-tweet-01", "impressions": 100, "likes": 5, "retweets": 2, "replies": 1},
+            {"tweet_id": "batch-tweet-02", "impressions": 200, "likes": 10, "retweets": 4, "replies": 2},
+        ]
+        await db.batch_update_tweet_analytics(metrics)
+        # tweets テーブルが更新されているか確認
+        tweets = await db.get_recent_tweets_for_analytics("batch-game", days=90)
+        tweet_map = {t["tweet_id"]: t for t in tweets}
+        self.assertEqual(tweet_map["batch-tweet-01"]["impressions"], 100)
+        self.assertEqual(tweet_map["batch-tweet-02"]["impressions"], 200)
+        # tweet_metrics_history に挿入されているか確認
+        h1 = await db.get_tweet_metrics_history("batch-tweet-01")
+        h2 = await db.get_tweet_metrics_history("batch-tweet-02")
+        self.assertEqual(len(h1), 1)
+        self.assertEqual(h1[0]["impressions"], 100)
+        self.assertEqual(len(h2), 1)
+        self.assertEqual(h2[0]["impressions"], 200)
+
+    async def test_batch_update_tweet_analytics_empty(self) -> None:
+        """batch_update_tweet_analytics に空リストを渡してもエラーにならないことを確認する。"""
+        await db.batch_update_tweet_analytics([])  # should not raise
+
 
 if __name__ == "__main__":
     unittest.main()
