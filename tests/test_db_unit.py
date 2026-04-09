@@ -764,6 +764,115 @@ class DbOperationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(ja["discord_msg_id"], "grp-msg-99")
         self.assertEqual(en["discord_msg_id"], "grp-msg-99")
 
+    # ---- list_pending_drafts ----
+
+    async def test_list_pending_drafts_returns_pending_only(self) -> None:
+        """list_pending_drafts が pending 状態の下書きのみを返すことを確認する。"""
+        await self._add_game()
+        draft_pending = await db.add_draft(
+            {
+                "draft_group_id": None,
+                "game_id": "game-x",
+                "mode": "random",
+                "lang": "ja",
+                "content": "Pending content",
+                "asset_id": None,
+                "tone": "casual",
+                "strategy_note": None,
+                "asset_reason": None,
+                "source_progress_ids": [],
+                "source_appeal_ids": [],
+            }
+        )
+        draft_approved = await db.add_draft(
+            {
+                "draft_group_id": None,
+                "game_id": "game-x",
+                "mode": "random",
+                "lang": "en",
+                "content": "Approved content",
+                "asset_id": None,
+                "tone": "casual",
+                "strategy_note": None,
+                "asset_reason": None,
+                "source_progress_ids": [],
+                "source_appeal_ids": [],
+            }
+        )
+        await db.approve_draft_group(None, approved_by="1", draft_id=draft_approved)
+
+        pending = await db.list_pending_drafts(game_id="game-x")
+        self.assertEqual(len(pending), 1)
+        self.assertEqual(pending[0]["id"], draft_pending)
+        self.assertEqual(pending[0]["status"], "pending")
+
+    async def test_list_pending_drafts_empty(self) -> None:
+        """pending 下書きがない場合は空リストが返ることを確認する。"""
+        await self._add_game()
+        pending = await db.list_pending_drafts(game_id="game-x")
+        self.assertEqual(pending, [])
+
+    async def test_list_pending_drafts_all_games(self) -> None:
+        """game_id を指定しない場合は全ゲームの pending 下書きが返ることを確認する。"""
+        await self._add_game()
+        # 別のゲームを追加して 2 件の pending 下書きを作る
+        await db.add_game(
+            {
+                "id": "game-y",
+                "name_ja": "Game Y",
+                "name_en": None,
+                "genre": None,
+                "platform": "Steam",
+                "status": "development",
+                "steam_url": None,
+                "elevator_ja": None,
+                "elevator_en": None,
+                "hashtags": [],
+                "target_audience": [],
+                "circle": None,
+            }
+        )
+        for game_id in ("game-x", "game-y"):
+            await db.add_draft(
+                {
+                    "draft_group_id": None,
+                    "game_id": game_id,
+                    "mode": "random",
+                    "lang": "ja",
+                    "content": f"Draft for {game_id}",
+                    "asset_id": None,
+                    "tone": "casual",
+                    "strategy_note": None,
+                    "asset_reason": None,
+                    "source_progress_ids": [],
+                    "source_appeal_ids": [],
+                }
+            )
+        pending = await db.list_pending_drafts()
+        self.assertEqual(len(pending), 2)
+
+    async def test_list_pending_drafts_excludes_rejected(self) -> None:
+        """rejected 状態の下書きが list_pending_drafts に含まれないことを確認する。"""
+        await self._add_game()
+        draft_id = await db.add_draft(
+            {
+                "draft_group_id": None,
+                "game_id": "game-x",
+                "mode": "random",
+                "lang": "ja",
+                "content": "Will be rejected",
+                "asset_id": None,
+                "tone": "casual",
+                "strategy_note": None,
+                "asset_reason": None,
+                "source_progress_ids": [],
+                "source_appeal_ids": [],
+            }
+        )
+        await db.reject_draft_group(None, draft_id=draft_id)
+        pending = await db.list_pending_drafts(game_id="game-x")
+        self.assertEqual(pending, [])
+
 
 if __name__ == "__main__":
     unittest.main()
