@@ -7,6 +7,10 @@ from config import CLAUDE_TIMEOUT, PROMPTS_DIR
 
 
 async def run_claude(prompt: str, timeout: int = CLAUDE_TIMEOUT) -> str:
+    """Claude CLI にプロンプトを渡して実行し、標準出力のテキストを返す。
+
+    タイムアウトした場合は RuntimeError を送出する。
+    """
     process = await asyncio.create_subprocess_exec(
         "claude",
         "--print",
@@ -35,10 +39,12 @@ async def run_claude(prompt: str, timeout: int = CLAUDE_TIMEOUT) -> str:
 
 
 def _load_prompt(filename: str) -> str:
+    """プロンプトファイルを読み込んで文字列として返す。"""
     return (PROMPTS_DIR / filename).read_text(encoding="utf-8")
 
 
 def extract_json(raw: str) -> dict:
+    """Claude の出力テキストから最初の JSON オブジェクトを抽出してパースする。"""
     start = raw.find("{")
     end = raw.rfind("}") + 1
     if start < 0 or end <= start:
@@ -47,6 +53,17 @@ def extract_json(raw: str) -> dict:
 
 
 async def generate_promo_tweet(context: str, mode: str, lang: str, tone: str) -> dict:
+    """ゲーム情報を元に Claude でプロモツイートの下書きを生成する。
+
+    Args:
+        context: ゲーム情報・進捗・アピールポイントを含むテキスト。
+        mode: 生成モード（progress / appeal / milestone など）。
+        lang: 生成言語（ja / en / both）。
+        tone: トーン（excited / casual / technical / mysterious）。
+
+    Returns:
+        tweet_ja, tweet_en, recommended_asset_id などを含む辞書。
+    """
     prompt = f"""{_load_prompt("system_promo.txt")}
 
 {_load_prompt("brand_voice.txt")}
@@ -79,6 +96,15 @@ async def generate_promo_tweet(context: str, mode: str, lang: str, tone: str) ->
 
 
 async def generate_analytics_report(context: str, period: str) -> dict:
+    """ツイートデータを元に Claude でアナリティクスレポートを生成する。
+
+    Args:
+        context: ツイートごとのメトリクスをまとめたテキスト。
+        period: 分析対象期間（例: "2026-04"）。
+
+    Returns:
+        best_time_slot, best_tone, next_strategy などを含む辞書。
+    """
     prompt = f"""{_load_prompt("system_analytics.txt")}
 
 ## 分析対象期間: {period}

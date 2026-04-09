@@ -12,6 +12,8 @@ from services.discord_utils import ensure_allowed
 
 
 class AssetCog(commands.Cog):
+    """素材ファイルの登録を担当する Cog。"""
+
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
@@ -30,6 +32,7 @@ class AssetCog(commands.Cog):
         description: str | None = None,
         recommended_for: str = "any",
     ) -> None:
+        """Discord に添付されたファイルをローカルに保存し、素材として DB に登録する。"""
         if not await ensure_allowed(interaction):
             return
         game = await db.get_game(game_id)
@@ -37,11 +40,13 @@ class AssetCog(commands.Cog):
             await interaction.response.send_message(f"ゲーム `{game_id}` が見つかりません。", ephemeral=True)
             return
 
+        # ゲームごとのサブディレクトリに素材ファイルを保存
         target_dir = Path(ASSETS_DIR) / game_id
         target_dir.mkdir(parents=True, exist_ok=True)
         target_path = target_dir / file.filename
         await file.save(target_path)
 
+        # 拡張子から素材タイプを判定（拡張子なしの場合は "bin" とする）
         asset_type = target_path.suffix.lower().lstrip(".") or "bin"
         asset_id = await db.add_asset(
             {
@@ -63,5 +68,6 @@ class AssetCog(commands.Cog):
 
 
 async def setup(bot: commands.Bot) -> None:
+    """Cog を Bot に登録するセットアップ関数。"""
     await bot.add_cog(AssetCog(bot))
 

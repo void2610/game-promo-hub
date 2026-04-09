@@ -9,12 +9,15 @@ from discord.ext import commands
 from services import db, llm
 from services.discord_utils import ensure_allowed, format_hashtags
 
+# 有効なモード・言語・トーンの一覧
 VALID_MODES = ("progress", "appeal", "milestone", "random", "technical", "character", "art", "story")
 VALID_LANGS = ("ja", "en", "both")
 VALID_TONES = ("excited", "casual", "technical", "mysterious")
 
 
 class ApprovalView(discord.ui.View):
+    """プロモ下書きの承認・再生成・キャンセルを行うボタン付きビュー。"""
+
     def __init__(self, cog: "PromoCog", draft_ids: list[int], draft_group_id: str | None) -> None:
         super().__init__(timeout=3600)
         self.cog = cog
@@ -23,6 +26,7 @@ class ApprovalView(discord.ui.View):
 
     @discord.ui.button(label="承認してキューへ追加", style=discord.ButtonStyle.success)
     async def approve(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
+        """下書きを承認してスケジュールキューに追加する。"""
         if not await ensure_allowed(interaction):
             return
         await interaction.response.defer(ephemeral=True)
@@ -31,6 +35,7 @@ class ApprovalView(discord.ui.View):
 
     @discord.ui.button(label="再生成", style=discord.ButtonStyle.primary)
     async def regenerate(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
+        """現在の下書きを破棄して同じ設定で再生成する。"""
         if not await ensure_allowed(interaction):
             return
         await interaction.response.defer(ephemeral=True)
@@ -50,6 +55,7 @@ class ApprovalView(discord.ui.View):
 
     @discord.ui.button(label="キャンセル", style=discord.ButtonStyle.danger)
     async def cancel(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
+        """下書きを破棄（rejected）にする。"""
         if not await ensure_allowed(interaction):
             return
         await db.reject_draft_group(self.draft_group_id, draft_id=self.draft_ids[0])
@@ -58,6 +64,8 @@ class ApprovalView(discord.ui.View):
 
 
 class PromoCog(commands.Cog):
+    """ツイート下書きの生成・承認を担当する Cog。"""
+
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
@@ -70,6 +78,7 @@ class PromoCog(commands.Cog):
         lang: str = "ja",
         tone: str = "casual",
     ) -> None:
+        """LLM を使ってプロモツイートの下書きを生成し、承認ボタン付きで表示する。"""
         if not await ensure_allowed(interaction):
             return
         await interaction.response.defer(ephemeral=True)
@@ -83,6 +92,8 @@ class PromoCog(commands.Cog):
         mode: str,
         lang: str,
     ) -> None:
+        """LLM で下書きを生成し、Embed と承認ビューを送信する内部メソッド。"""
+        # 入力値のバリデーション
         if mode not in VALID_MODES:
             await interaction.followup.send(f"mode は {', '.join(VALID_MODES)} から選んでください。", ephemeral=True)
             return
@@ -102,11 +113,13 @@ class PromoCog(commands.Cog):
         context = await db.build_promo_context(game_id, mode)
         result = await llm.generate_promo_tweet(context.text, mode, lang, tone)
 
+        # LLM が推奨した素材 ID を取得
         asset = None
         asset_id = result.get("recommended_asset_id")
         if isinstance(asset_id, int):
             asset = await db.get_asset_by_id(asset_id)
 
+        # lang="both" の場合は ja・en を同一グループとして保存
         draft_group_id = db.generate_draft_group_id() if lang == "both" else None
         draft_ids: list[int] = []
         languages = ("ja", "en") if lang == "both" else (lang,)
@@ -149,6 +162,7 @@ class PromoCog(commands.Cog):
 
         view = ApprovalView(self, draft_ids=draft_ids, draft_group_id=draft_group_id)
         message = await interaction.followup.send(embed=embed, view=view, ephemeral=True, wait=True)
+        # Discord メッセージ ID を下書きに紐付けて再取得できるようにする
         if draft_group_id:
             await db.update_draft_group_message(draft_group_id, str(message.id))
         else:
@@ -160,6 +174,7 @@ class PromoCog(commands.Cog):
         draft_ids: list[int],
         draft_group_id: str | None,
     ) -> None:
+        """下書きを承認済みに更新し、スケジュールキューへの追加を確認メッセージで通知する。"""
         if draft_group_id:
             await db.approve_draft_group(draft_group_id, approved_by=str(interaction.user.id))
             drafts = await db.get_drafts_by_group(draft_group_id)
@@ -179,4 +194,5 @@ class PromoCog(commands.Cog):
 
 
 async def setup(bot: commands.Bot) -> None:
+    """Cog を Bot に登録するセットアップ関数。"""
     await bot.add_cog(PromoCog(bot))

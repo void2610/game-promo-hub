@@ -10,18 +10,24 @@ from services import db, scheduler
 
 
 class DatabaseAndSchedulerTests(unittest.IsolatedAsyncioTestCase):
+    """DB 操作とスケジューラの統合テスト。各テストは一時 DB を使い独立して実行される。"""
+
     async def asyncSetUp(self) -> None:
+        """テストごとに一時ディレクトリと空の DB を作成する。"""
         self.temp_dir = tempfile.TemporaryDirectory()
         temp_db = Path(self.temp_dir.name) / "test.db"
         config.DB_PATH = temp_db
         db.DB_PATH = temp_db
+        # スケジューラのスロット重複防止キーをリセット
         scheduler._last_slot_key = None
         await db.init_db()
 
     async def asyncTearDown(self) -> None:
+        """テスト後に一時ディレクトリを削除する。"""
         self.temp_dir.cleanup()
 
     async def _add_game(self, game_id: str, name: str) -> None:
+        """テスト用ゲームを DB に追加するヘルパー。"""
         await db.add_game(
             {
                 "id": game_id,
@@ -40,6 +46,7 @@ class DatabaseAndSchedulerTests(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_build_promo_context_and_draft_queue(self) -> None:
+        """プロモコンテキスト生成・下書き追加・承認・キュー確認の一連フローをテストする。"""
         await self._add_game("game-a", "Game A")
         progress_id = await db.add_progress(
             {
@@ -62,11 +69,13 @@ class DatabaseAndSchedulerTests(unittest.IsolatedAsyncioTestCase):
                 "promo_tips": "Mention the pipeline work",
             }
         )
+        # コンテキストにゲーム名・進捗・アピール ID が含まれることを確認
         context = await db.build_promo_context("game-a", "technical")
         self.assertIn("Game A", context.text)
         self.assertEqual(context.progress_ids, [progress_id])
         self.assertEqual(context.appeal_ids, [appeal_id])
 
+        # ja/en ペアの下書きをグループとして追加
         group_id = db.generate_draft_group_id()
         draft_ja = await db.add_draft(
             {
@@ -99,12 +108,14 @@ class DatabaseAndSchedulerTests(unittest.IsolatedAsyncioTestCase):
             }
         )
 
+        # 承認後にキューへ正しく追加されることを確認
         await db.approve_draft_group(group_id, approved_by="123")
         queue = await db.list_approved_queue()
         self.assertEqual(queue[0]["queue_id"], group_id)
         self.assertEqual(sorted(queue[0]["draft_ids"]), sorted([draft_ja, draft_en]))
 
     async def test_pick_next_group_prefers_less_posted_game(self) -> None:
+        """投稿数の少ないゲームの下書きが優先して選ばれることを確認する。"""
         await self._add_game("game-a", "Game A")
         await self._add_game("game-b", "Game B")
 
@@ -141,6 +152,7 @@ class DatabaseAndSchedulerTests(unittest.IsolatedAsyncioTestCase):
         await db.approve_draft_group(None, approved_by="1", draft_id=draft_a)
         await db.approve_draft_group(None, approved_by="1", draft_id=draft_b)
 
+        # game-a に既存の投稿を追加して投稿数を増やす
         await db.add_tweet(
             {
                 "tweet_id": "100",
@@ -157,10 +169,12 @@ class DatabaseAndSchedulerTests(unittest.IsolatedAsyncioTestCase):
             }
         )
 
+        # 投稿数の少ない game-b が選ばれることを確認
         picked = await db.pick_next_approved_draft_group()
         self.assertEqual(picked[0]["game_id"], "game-b")
 
     async def test_scheduler_dispatch_posts_and_consumes_sources(self) -> None:
+        """スケジューラが投稿を実行し、ソースの進捗・アピールを消費済みにすることを確認する。"""
         await self._add_game("game-a", "Game A")
         progress_id = await db.add_progress(
             {
@@ -199,9 +213,11 @@ class DatabaseAndSchedulerTests(unittest.IsolatedAsyncioTestCase):
             }
         )
         await db.approve_draft_group(None, approved_by="42", draft_id=draft_id)
+        # 現在時刻のスロットを登録してスケジューラが発火するようにする
         await db.add_schedule_slot(datetime.now(config.JST).strftime("%H:%M"))
 
         async def fake_post_tweet(content, media_path=None, game_id=None, reply_to_tweet_id=None):
+            """Twitter への実投稿をスキップするダミー関数。"""
             return "999", "https://twitter.com/i/web/status/999"
 
         original = scheduler.twitter.post_tweet
@@ -211,11 +227,13 @@ class DatabaseAndSchedulerTests(unittest.IsolatedAsyncioTestCase):
         finally:
             scheduler.twitter.post_tweet = original
 
+        # 投稿後の状態を検証
         self.assertTrue(posted)
         draft = await db.get_draft(draft_id)
         self.assertEqual(draft["status"], "posted")
         recent = await db.get_recent_tweets("game-a", days=1)
         self.assertEqual(len(recent), 1)
+        # ソースの進捗ログが tweeted=1 になって未ツイートリストから消えていることを確認
         progress = await db.get_recent_progress("game-a", limit=5)
         self.assertEqual(progress, [])
 

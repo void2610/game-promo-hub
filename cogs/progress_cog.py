@@ -12,6 +12,8 @@ from services.discord_utils import ensure_allowed
 
 
 class ProgressAddModal(discord.ui.Modal, title="進捗登録"):
+    """進捗情報を入力するモーダルダイアログ。"""
+
     milestone = discord.ui.TextInput(label="マイルストーン", required=False, max_length=100)
     content = discord.ui.TextInput(label="進捗内容", style=discord.TextStyle.paragraph, max_length=1000)
     appeal_note = discord.ui.TextInput(
@@ -27,9 +29,11 @@ class ProgressAddModal(discord.ui.Modal, title="進捗登録"):
         self.game_id = game_id
         self.excitement = excitement
         self.tweetable = tweetable
+        # 日付欄のデフォルト値を今日の JST 日付に設定
         self.log_date.default = datetime.now(JST).strftime("%Y-%m-%d")
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
+        """モーダル送信時の処理。進捗ログを DB に追加する。"""
         if not await ensure_allowed(interaction):
             return
         game = await db.get_game(self.game_id)
@@ -54,6 +58,8 @@ class ProgressAddModal(discord.ui.Modal, title="進捗登録"):
 
 
 class ProgressCog(commands.Cog):
+    """進捗ログの登録を担当する Cog。"""
+
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
@@ -66,11 +72,13 @@ class ProgressCog(commands.Cog):
         excitement: app_commands.Range[int, 1, 3] = 2,
         tweetable: bool = True,
     ) -> None:
+        """進捗登録モーダルを開く。excitement と tweetable フラグをモーダルに引き渡す。"""
         if not await ensure_allowed(interaction):
             return
         await interaction.response.send_modal(ProgressAddModal(game_id, excitement, tweetable))
 
 
 async def setup(bot: commands.Bot) -> None:
+    """Cog を Bot に登録するセットアップ関数。"""
     await bot.add_cog(ProgressCog(bot))
 
