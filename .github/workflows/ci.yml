@@ -91,7 +91,7 @@ jobs:
               }
 
               const table = rows.length > 0
-                ? `| クラス | テスト名 | 結果 |\n|---|---|---|\n${rows.join('\n')}`
+                ? `<details>\n<summary>テストケース一覧 (${rows.length} 件)</summary>\n\n| クラス | テスト名 | 結果 |\n|---|---|---|\n${rows.join('\n')}\n\n</details>`
                 : '';
 
               body = [
