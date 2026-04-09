@@ -28,7 +28,7 @@ JST = ZoneInfo("Asia/Tokyo")
 
 # Discord Bot の認証トークン
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
-# コマンドを同期するギルド ID（未設定時はグローバル同期）
+# コマンドを同期する必須のギルド ID
 DISCORD_GUILD_ID = int(os.getenv("DISCORD_GUILD_ID", "0")) or None
 # Bot の操作を許可する Discord ユーザー ID のリスト
 ALLOWED_USER_IDS = [
