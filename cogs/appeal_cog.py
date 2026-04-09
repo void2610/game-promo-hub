@@ -9,6 +9,8 @@ from services.discord_utils import ensure_allowed
 
 
 class AppealAddModal(discord.ui.Modal, title="アピールポイント登録"):
+    """アピールポイントを入力するモーダルダイアログ。"""
+
     category = discord.ui.TextInput(label="カテゴリ", placeholder="mechanics / art / story / technical")
     priority = discord.ui.TextInput(label="優先度", default="2", placeholder="1-3")
     title_input = discord.ui.TextInput(label="タイトル", max_length=100)
@@ -25,12 +27,14 @@ class AppealAddModal(discord.ui.Modal, title="アピールポイント登録"):
         self.game_id = game_id
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
+        """モーダル送信時の処理。優先度を 1–3 にクランプして DB に登録する。"""
         if not await ensure_allowed(interaction):
             return
         game = await db.get_game(self.game_id)
         if not game:
             await interaction.response.send_message(f"ゲーム `{self.game_id}` が見つかりません。", ephemeral=True)
             return
+        # 優先度の入力値を 1–3 の範囲にクランプする
         try:
             priority = max(1, min(3, int(str(self.priority).strip() or "2")))
         except ValueError:
@@ -52,16 +56,20 @@ class AppealAddModal(discord.ui.Modal, title="アピールポイント登録"):
 
 
 class AppealCog(commands.Cog):
+    """アピールポイントの登録を担当する Cog。"""
+
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
     @app_commands.command(name="appeal_add", description="アピールポイントを追加する")
     async def appeal_add(self, interaction: discord.Interaction, game_id: str) -> None:
+        """アピールポイント登録モーダルを開く。"""
         if not await ensure_allowed(interaction):
             return
         await interaction.response.send_modal(AppealAddModal(game_id))
 
 
 async def setup(bot: commands.Bot) -> None:
+    """Cog を Bot に登録するセットアップ関数。"""
     await bot.add_cog(AppealCog(bot))
 

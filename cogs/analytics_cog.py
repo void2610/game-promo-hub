@@ -12,15 +12,19 @@ from services.discord_utils import ensure_allowed
 
 
 class AnalyticsCog(commands.Cog):
+    """X/Twitter のアナリティクス取得・レポート生成を担当する Cog。"""
+
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
     @app_commands.command(name="analytics_fetch", description="X/Twitter のメトリクスを取得する")
     async def analytics_fetch(self, interaction: discord.Interaction, game_id: str) -> None:
+        """まだメトリクス未取得のツイートを Twitter API から一括取得して DB に保存する。"""
         if not await ensure_allowed(interaction):
             return
         await interaction.response.defer(ephemeral=True)
         tweets = await db.get_recent_tweets_for_analytics(game_id, days=90)
+        # analytics_fetched_at が NULL のもの（未取得）のみを対象にする
         target_ids = [tweet["tweet_id"] for tweet in tweets if tweet.get("tweet_id") and tweet.get("analytics_fetched_at") is None]
         if not target_ids:
             await interaction.followup.send("更新対象のツイートはありません。", ephemeral=True)
@@ -37,17 +41,21 @@ class AnalyticsCog(commands.Cog):
         game_id: str,
         period: str | None = None,
     ) -> None:
+        """過去 60 日のツイートデータを LLM に渡し、分析レポートを生成して表示する。"""
         if not await ensure_allowed(interaction):
             return
         await interaction.response.defer(ephemeral=True)
+        # period 未指定の場合は今月（JST）を使用
         if period is None:
             period = datetime.now(JST).strftime("%Y-%m")
         tweets = await db.get_recent_tweets_for_analytics(game_id, days=60)
+        # メトリクスが取得済みのツイートのみを分析対象にする
         analyzed = [tweet for tweet in tweets if tweet.get("impressions") is not None]
         if not analyzed:
             await interaction.followup.send("分析対象データが不足しています。先に `/analytics_fetch` を実行してください。", ephemeral=True)
             return
 
+        # ツイートデータをテキスト形式にまとめて LLM に渡す
         context = "\n".join(
             (
                 f"- [{str(tweet['posted_at'])[:10]}] tone:{tweet.get('tone') or '-'} "
@@ -81,6 +89,7 @@ class AnalyticsCog(commands.Cog):
         game_id: str,
         limit: app_commands.Range[int, 1, 10] = 5,
     ) -> None:
+        """エンゲージメント率の高い上位ツイートを Embed で表示する。"""
         if not await ensure_allowed(interaction):
             return
         top = await db.get_top_tweets(game_id, limit=limit)
@@ -99,5 +108,6 @@ class AnalyticsCog(commands.Cog):
 
 
 async def setup(bot: commands.Bot) -> None:
+    """Cog を Bot に登録するセットアップ関数。"""
     await bot.add_cog(AnalyticsCog(bot))
 

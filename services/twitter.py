@@ -16,6 +16,7 @@ from config import (
 
 
 def _get_client() -> tweepy.Client:
+    """Twitter/X API v2 クライアントを生成して返す。"""
     validate_twitter_config()
     return tweepy.Client(
         bearer_token=TWITTER_BEARER_TOKEN,
@@ -27,6 +28,7 @@ def _get_client() -> tweepy.Client:
 
 
 def _get_api_v1() -> tweepy.API:
+    """メディアアップロード用の Twitter API v1.1 クライアントを生成して返す。"""
     validate_twitter_config()
     auth = tweepy.OAuth1UserHandler(
         TWITTER_API_KEY,
@@ -43,10 +45,16 @@ async def post_tweet(
     game_id: str | None = None,
     reply_to_tweet_id: str | None = None,
 ) -> tuple[str, str]:
+    """ツイートを投稿し、(tweet_id, tweet_url) を返す。
+
+    メディアファイルが指定された場合は API v1.1 でアップロードしてから添付する。
+    reply_to_tweet_id が指定された場合はそのツイートへのリプライとして投稿する。
+    """
     def _post() -> tuple[str, str]:
         client = _get_client()
         media_ids: list[int] | None = None
         if media_path:
+            # メディアファイルを API v1.1 でアップロード
             api_v1 = _get_api_v1()
             media = api_v1.media_upload(media_path)
             media_ids = [media.media_id]
@@ -59,10 +67,16 @@ async def post_tweet(
         tweet_id = str(response.data["id"])
         return tweet_id, f"https://twitter.com/i/web/status/{tweet_id}"
 
+    # ブロッキング処理を別スレッドで実行してイベントループをブロックしない
     return await asyncio.to_thread(_post)
 
 
 async def fetch_tweet_metrics(tweet_ids: list[str]) -> list[dict[str, Any]]:
+    """指定したツイート ID のパブリックメトリクス（インプレッション・いいね等）を取得する。
+
+    Returns:
+        tweet_id, impressions, likes, retweets, replies を含む辞書のリスト。
+    """
     if not tweet_ids:
         return []
 
@@ -83,5 +97,6 @@ async def fetch_tweet_metrics(tweet_ids: list[str]) -> list[dict[str, Any]]:
             )
         return results
 
+    # ブロッキング処理を別スレッドで実行
     return await asyncio.to_thread(_fetch)
 

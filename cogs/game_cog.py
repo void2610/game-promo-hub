@@ -11,6 +11,8 @@ from services.discord_utils import ensure_allowed, format_hashtags, parse_list_i
 
 
 class GameAddModal(discord.ui.Modal, title="ゲーム登録"):
+    """ゲーム情報を入力するモーダルダイアログ。"""
+
     game_id = discord.ui.TextInput(label="ゲームID", placeholder="niwa-kobito", max_length=50)
     name_ja = discord.ui.TextInput(label="日本語名", max_length=100)
     name_en = discord.ui.TextInput(label="英語名", required=False, max_length=100)
@@ -29,8 +31,10 @@ class GameAddModal(discord.ui.Modal, title="ゲーム登録"):
     )
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
+        """モーダル送信時の処理。補足欄を key=value 形式でパースして DB に登録する。"""
         if not await ensure_allowed(interaction):
             return
+        # 補足欄の key=value 行をパース
         detail_map = {}
         for line in str(self.details).splitlines():
             if "=" not in line:
@@ -56,6 +60,7 @@ class GameAddModal(discord.ui.Modal, title="ゲーム登録"):
                 }
             )
         except sqlite3.IntegrityError:
+            # 同一 ID が既に登録されている場合はエラーを返す
             await interaction.response.send_message(
                 f"ゲームID `{str(self.game_id).strip()}` は既に登録されています。",
                 ephemeral=True,
@@ -70,17 +75,21 @@ class GameAddModal(discord.ui.Modal, title="ゲーム登録"):
 
 
 class GameCog(commands.Cog):
+    """ゲームの登録・一覧表示を担当する Cog。"""
+
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
     @app_commands.command(name="game_add", description="ゲームを登録する")
     async def game_add(self, interaction: discord.Interaction) -> None:
+        """ゲーム登録モーダルを開く。"""
         if not await ensure_allowed(interaction):
             return
         await interaction.response.send_modal(GameAddModal())
 
     @app_commands.command(name="game_list", description="登録されているゲーム一覧を表示する")
     async def game_list(self, interaction: discord.Interaction) -> None:
+        """登録済みゲームの一覧を Embed で表示する（最大 25 件）。"""
         if not await ensure_allowed(interaction):
             return
         games = await db.list_games()
@@ -103,4 +112,5 @@ class GameCog(commands.Cog):
 
 
 async def setup(bot: commands.Bot) -> None:
+    """Cog を Bot に登録するセットアップ関数。"""
     await bot.add_cog(GameCog(bot))
