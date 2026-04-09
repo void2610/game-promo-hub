@@ -39,12 +39,11 @@ ALLOWED_USER_IDS = [
     if value.strip()
 ]
 
-# Twitter/X API 認証情報
-TWITTER_BEARER_TOKEN = os.getenv("TWITTER_BEARER_TOKEN")
-TWITTER_API_KEY = os.getenv("TWITTER_API_KEY")
-TWITTER_API_SECRET = os.getenv("TWITTER_API_SECRET")
-TWITTER_ACCESS_TOKEN = os.getenv("TWITTER_ACCESS_TOKEN")
-TWITTER_ACCESS_SECRET = os.getenv("TWITTER_ACCESS_SECRET")
+# Twitter/X スクレイピング用認証情報
+TWITTER_USERNAME = os.getenv("TWITTER_USERNAME")
+TWITTER_PASSWORD = os.getenv("TWITTER_PASSWORD")
+# Playwright セッションキャッシュファイルのパス（デフォルト: twitter_session.json）
+TWITTER_SESSION_PATH = BASE_DIR / os.getenv("TWITTER_SESSION_PATH", "twitter_session.json")
 
 
 def require_env(name: str, value: str | None) -> str:
@@ -64,10 +63,7 @@ def validate_discord_config() -> None:
 
 
 def validate_twitter_config() -> None:
-    """Twitter/X API に必要な環境変数がすべて設定されているか検証する。"""
-    require_env("TWITTER_BEARER_TOKEN", TWITTER_BEARER_TOKEN)
-    require_env("TWITTER_API_KEY", TWITTER_API_KEY)
-    require_env("TWITTER_API_SECRET", TWITTER_API_SECRET)
-    require_env("TWITTER_ACCESS_TOKEN", TWITTER_ACCESS_TOKEN)
-    require_env("TWITTER_ACCESS_SECRET", TWITTER_ACCESS_SECRET)
+    """Twitter/X スクレイピングに必要な環境変数がすべて設定されているか検証する。"""
+    require_env("TWITTER_USERNAME", TWITTER_USERNAME)
+    require_env("TWITTER_PASSWORD", TWITTER_PASSWORD)
 
