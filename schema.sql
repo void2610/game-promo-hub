@@ -141,9 +141,25 @@ CREATE INDEX IF NOT EXISTS idx_progress_logs_game_date
 CREATE INDEX IF NOT EXISTS idx_appeal_points_game_priority
     ON appeal_points(game_id, priority DESC, last_used_at ASC);
 
+-- ツイートメトリクス履歴テーブル
+-- 分析実行のたびに同じツイートのスナップショットを蓄積し、時系列で参照できるようにする
+CREATE TABLE IF NOT EXISTS tweet_metrics_history (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    tweet_id    TEXT NOT NULL,              -- tweets.tweet_id への参照（外部キー制約なし）
+    impressions INTEGER,                   -- インプレッション数
+    likes       INTEGER,                   -- いいね数
+    retweets    INTEGER,                   -- リツイート数
+    replies     INTEGER,                   -- リプライ数
+    fetched_at  DATETIME DEFAULT CURRENT_TIMESTAMP  -- 取得日時（JST ISO 8601）
+);
+
 -- インデックス: ツイートをゲーム・投稿日時で高速検索
 CREATE INDEX IF NOT EXISTS idx_tweets_game_posted_at
     ON tweets(game_id, posted_at DESC);
+
+-- インデックス: ツイートメトリクス履歴をツイート ID・取得日時で高速検索
+CREATE INDEX IF NOT EXISTS idx_tweet_metrics_history_tweet_fetched
+    ON tweet_metrics_history(tweet_id, fetched_at ASC);
 
 -- インデックス: 下書きをステータス・グループ・承認日時で高速検索（キュー処理に使用）
 CREATE INDEX IF NOT EXISTS idx_tweet_drafts_status_group

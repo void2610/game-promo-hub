@@ -17,15 +17,16 @@ class AnalyticsCog(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
-    @app_commands.command(name="analytics_fetch", description="X/Twitter のメトリクスを取得する")
+    @app_commands.command(name="analytics_fetch", description="X/Twitter のメトリクスを今すぐ手動取得する")
     async def analytics_fetch(self, interaction: discord.Interaction, game_id: str) -> None:
-        """まだメトリクス未取得のツイートを Twitter API から一括取得して DB に保存する。"""
+        """直近 90 日のツイートのメトリクスを Twitter API から一括取得して DB に保存する。
+        すでに取得済みのツイートも再取得して最新値に更新し、履歴に追記する。
+        """
         if not await ensure_allowed(interaction):
             return
         await interaction.response.defer(ephemeral=True)
         tweets = await db.get_recent_tweets_for_analytics(game_id, days=90)
-        # analytics_fetched_at が NULL のもの（未取得）のみを対象にする
-        target_ids = [tweet["tweet_id"] for tweet in tweets if tweet.get("tweet_id") and tweet.get("analytics_fetched_at") is None]
+        target_ids = [tweet["tweet_id"] for tweet in tweets if tweet.get("tweet_id")]
         if not target_ids:
             await interaction.followup.send("更新対象のツイートはありません。", ephemeral=True)
             return
@@ -102,6 +103,43 @@ class AnalyticsCog(commands.Cog):
             embed.add_field(
                 name=f"#{index} {rate:.2f}% ❤️{tweet.get('likes') or 0} 🔁{tweet.get('retweets') or 0}",
                 value=f"{tweet['content'][:100]}\n{tweet.get('tweet_url') or '-'}",
+                inline=False,
+            )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+    @app_commands.command(name="analytics_history", description="ツイートのインプレッション時系列を表示する")
+    async def analytics_history(
+        self,
+        interaction: discord.Interaction,
+        tweet_id: str,
+    ) -> None:
+        """指定したツイートのインプレッション・いいね・RT の時系列履歴を Embed で表示する。"""
+        if not await ensure_allowed(interaction):
+            return
+        history = await db.get_tweet_metrics_history(tweet_id)
+        if not history:
+            await interaction.response.send_message(
+                "この tweet_id のメトリクス履歴がありません。先に `/analytics_fetch` を実行してください。",
+                ephemeral=True,
+            )
+            return
+        embed = discord.Embed(
+            title=f"インプレッション履歴 / {tweet_id}",
+            description=f"取得回数: {len(history)} 回",
+            color=0x1DA1F2,
+        )
+        # 最新 10 件に絞って表示する（Discord の Embed フィールド上限は 25）
+        for snapshot in history[-10:]:
+            fetched_at = str(snapshot.get("fetched_at") or "")[:16]
+            embed.add_field(
+                name=fetched_at,
+                value=(
+                    f"👁 {snapshot.get('impressions') or 0}  "
+                    f"❤️ {snapshot.get('likes') or 0}  "
+                    f"🔁 {snapshot.get('retweets') or 0}  "
+                    f"💬 {snapshot.get('replies') or 0}"
+                ),
                 inline=False,
             )
         await interaction.response.send_message(embed=embed, ephemeral=True)
