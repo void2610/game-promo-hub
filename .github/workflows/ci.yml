@@ -1,0 +1,134 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: "pyproject.toml"
+
+      - name: Install dependencies
+        run: uv sync --all-groups
+
+      - name: Run tests
+        id: tests
+        run: uv run pytest tests/ -v --junitxml=test-results/results.xml
+        continue-on-error: true
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: test-results/
+
+      - name: Comment test results on PR
+        if: ${{ always() && github.event_name == 'pull_request' }}
+        uses: actions/github-script@v7
+        env:
+          TEST_OUTCOME: ${{ steps.tests.outcome }}
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+
+            const marker = '<!-- ci-test-results -->';
+            const resultsPath = 'test-results/results.xml';
+            const outcome = process.env.TEST_OUTCOME;
+
+            let body;
+            if (!fs.existsSync(resultsPath)) {
+              body = `${marker}\n## ❓ テスト結果\n\nテスト結果ファイルが見つかりませんでした。`;
+            } else {
+              const xml = fs.readFileSync(resultsPath, 'utf8');
+              const attr = (name) => {
+                const m = xml.match(new RegExp(`<testsuite[^>]* ${name}="([^"]+)"`));
+                return m ? parseInt(m[1], 10) : 0;
+              };
+              const total    = attr('tests');
+              const failures = attr('failures');
+              const errors   = attr('errors');
+              const skipped  = attr('skipped');
+              const passed   = total - failures - errors - skipped;
+              const failed   = failures + errors;
+              const icon     = failed > 0 ? '❌' : '✅';
+
+              const rows = [];
+              const caseRe = /<testcase[^>]*classname="([^"]*)"[^>]*name="([^"]*)"[^>]*(\/?>)([\s\S]*?)(?:<\/testcase>|(?=<testcase|<\/testsuite))/g;
+              let m;
+              while ((m = caseRe.exec(xml)) !== null) {
+                const classname = m[1];
+                const name      = m[2];
+                const rest      = m[4] || '';
+                let status;
+                if (rest.includes('<failure') || rest.includes('<error')) {
+                  status = '❌ FAILED';
+                } else if (rest.includes('<skipped')) {
+                  status = '⏭️ SKIPPED';
+                } else {
+                  status = '✅ PASSED';
+                }
+                rows.push(`| ${classname} | ${name} | ${status} |`);
+              }
+
+              const table = rows.length > 0
+                ? `<details>\n<summary>テストケース一覧 (${rows.length} 件)</summary>\n\n| クラス | テスト名 | 結果 |\n|---|---|---|\n${rows.join('\n')}\n\n</details>`
+                : '';
+
+              body = [
+                marker,
+                `## ${icon} テスト結果`,
+                '',
+                `| 合計 | ✅ 成功 | ❌ 失敗 | ⏭️ スキップ |`,
+                `|---:|---:|---:|---:|`,
+                `| ${total} | ${passed} | ${failed} | ${skipped} |`,
+                '',
+                table,
+              ].filter(l => l !== undefined).join('\n');
+            }
+
+            const issue_number = context.payload.pull_request.number;
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number,
+            });
+            const existing = comments.find(c => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number,
+                body,
+              });
+            }
+
+      - name: Fail if tests failed
+        if: ${{ steps.tests.outcome == 'failure' }}
+        run: exit 1

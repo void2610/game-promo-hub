@@ -6,6 +6,7 @@ promo.db
 assets/*
 !assets/.gitkeep
 .pytest_cache/
+test-results/
 .mypy_cache/
 .DS_Store
 
