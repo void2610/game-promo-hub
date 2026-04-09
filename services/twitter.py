@@ -6,7 +6,7 @@ import logging
 import re
 from typing import Any
 
-from playwright.async_api import BrowserContext, async_playwright
+from playwright.async_api import BrowserContext, Page, Response, async_playwright
 
 from config import (
     TWITTER_PASSWORD,
@@ -20,6 +20,8 @@ LOGGER = logging.getLogger(__name__)
 _X_LOGIN_URL = "https://x.com/i/flow/login"
 _X_HOME_URL = "https://x.com/home"
 _X_TWEET_URL = "https://x.com/i/web/status/{tweet_id}"
+# CreateTweet レスポンスのポーリング最大試行回数（0.5 秒間隔で最大 15 秒待機）
+_MAX_TWEET_RESPONSE_POLLS = 30
 
 # モジュールレベルのシングルトン
 _playwright_instance = None
@@ -104,9 +106,11 @@ async def _login(context: BrowserContext) -> None:
         await password_input.fill(TWITTER_PASSWORD or "")
         await page.keyboard.press("Enter")
 
-        # ホームページへの遷移を待つ
+        # ホームページへの遷移を待つ（x.com 配下かつ flow でないページを確認する）
         await page.wait_for_url(
-            lambda url: "home" in url or (url.startswith("https://x.com") and "flow" not in url),
+            lambda url: url.startswith("https://x.com/home") or (
+                url.startswith("https://x.com/") and "flow" not in url
+            ),
             timeout=20000,
         )
         await _save_session(context)
@@ -133,6 +137,7 @@ async def _ensure_logged_in() -> BrowserContext:
 
 def _parse_count(text: str) -> int:
     """「1,234」「12K」「3.5M」などの数値テキストを整数に変換する。"""
+    # \u306e は日本語の助詞「の」。X/Twitter の aria-label が「123 件の返信」のような形式になるため除去する
     text = text.strip().replace(",", "").replace("\u306e", "")
     if not text:
         return 0
@@ -148,7 +153,7 @@ def _parse_count(text: str) -> int:
         return 0
 
 
-async def _get_action_count(page, action: str) -> int:
+async def _get_action_count(page: Page, action: str) -> int:
     """ツイートアクションボタン（reply / retweet / like）のカウントを取得する。"""
     try:
         btn = page.locator(f'[data-testid="{action}"]').first
@@ -205,7 +210,7 @@ async def _scrape_tweet_metrics(context: BrowserContext, tweet_id: str) -> dict[
     page = await context.new_page()
     graphql_result: dict[str, Any] | None = None
 
-    async def handle_response(response) -> None:
+    async def handle_response(response: Response) -> None:
         nonlocal graphql_result
         if "TweetDetail" in response.url and graphql_result is None:
             try:
@@ -256,7 +261,7 @@ async def post_tweet(
     page = await context.new_page()
     tweet_id_from_response: list[str] = []
 
-    async def handle_create_tweet(response) -> None:
+    async def handle_create_tweet(response: Response) -> None:
         if "CreateTweet" in response.url and response.request.method == "POST":
             try:
                 body = await response.json()
@@ -314,7 +319,7 @@ async def post_tweet(
         await submit_btn.click()
 
         # CreateTweet レスポンスを最大 15 秒待機する
-        for _ in range(30):
+        for _ in range(_MAX_TWEET_RESPONSE_POLLS):
             if tweet_id_from_response:
                 break
             await asyncio.sleep(0.5)
