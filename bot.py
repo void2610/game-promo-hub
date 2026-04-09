@@ -26,14 +26,10 @@ class PromoBot(commands.Bot):
         for extension in EXTENSIONS:
             await self.load_extension(extension)
         setup_scheduler(self)
-        # ギルド ID が設定されている場合はそのギルドにのみコマンドを同期（反映が速い）
-        if DISCORD_GUILD_ID:
-            guild = discord.Object(id=DISCORD_GUILD_ID)
-            self.tree.copy_global_to(guild=guild)
-            await self.tree.sync(guild=guild)
-        else:
-            # グローバル同期（反映まで最大 1 時間かかる場合がある）
-            await self.tree.sync()
+        # validate_discord_config() により設定済みのギルドへコマンドを同期（反映が速い）
+        guild = discord.Object(id=DISCORD_GUILD_ID)
+        self.tree.copy_global_to(guild=guild)
+        await self.tree.sync(guild=guild)
 
     async def dispatch_scheduled_posts(self) -> bool:
         """スケジューラから呼ばれる定期投稿の実行。"""
