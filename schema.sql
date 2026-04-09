@@ -150,7 +150,7 @@ CREATE TABLE IF NOT EXISTS tweet_metrics_history (
     likes       INTEGER,                   -- いいね数
     retweets    INTEGER,                   -- リツイート数
     replies     INTEGER,                   -- リプライ数
-    fetched_at  DATETIME DEFAULT CURRENT_TIMESTAMP  -- 取得日時（JST ISO 8601）
+    fetched_at  TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S+09:00', 'now', '+9 hours'))  -- 取得日時（JST ISO 8601 / YYYY-MM-DDTHH:MM:SS+09:00）
 );
 
 -- インデックス: ツイートをゲーム・投稿日時で高速検索

@@ -35,15 +35,22 @@ def setup_scheduler(bot) -> AsyncIOScheduler:
         max_instances=1,
         coalesce=True,
     )
-    scheduler.add_job(
-        _analytics_tick,
-        IntervalTrigger(hours=ANALYTICS_FETCH_INTERVAL_HOURS),
-        args=[bot],
-        id="analytics-tick",
-        replace_existing=True,
-        max_instances=1,
-        coalesce=True,
-    )
+    if ANALYTICS_FETCH_INTERVAL_HOURS > 0:
+        scheduler.add_job(
+            _analytics_tick,
+            IntervalTrigger(hours=ANALYTICS_FETCH_INTERVAL_HOURS),
+            args=[bot],
+            id="analytics-tick",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+        )
+    else:
+        LOGGER.warning(
+            "ANALYTICS_FETCH_INTERVAL_HOURS=%d は無効な値です（正の整数を指定してください）。"
+            "自動アナリティクス取得ジョブを登録しませんでした。",
+            ANALYTICS_FETCH_INTERVAL_HOURS,
+        )
     scheduler.start()
     _scheduler = scheduler
     return scheduler
@@ -171,8 +178,7 @@ async def dispatch_analytics(bot) -> int:
     for i in range(0, len(all_tweet_ids), _TWITTER_BATCH_SIZE):
         batch = all_tweet_ids[i : i + _TWITTER_BATCH_SIZE]
         metrics = await twitter.fetch_tweet_metrics(batch)
-        for item in metrics:
-            await db.update_tweet_analytics(**item)
+        await db.batch_update_tweet_analytics(metrics)
         total_updated += len(metrics)
 
     LOGGER.info("Auto-analytics: updated %d tweet metrics snapshots", total_updated)

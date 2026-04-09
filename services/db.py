@@ -324,6 +324,42 @@ async def update_tweet_analytics(
         await db.commit()
 
 
+async def batch_update_tweet_analytics(metrics: list[dict[str, Any]]) -> None:
+    """複数ツイートのメトリクスを1トランザクションで一括更新する。
+
+    tweets テーブルを最新値で上書きし、tweet_metrics_history にスナップショットを追記する。
+    1件ずつ呼び出す update_tweet_analytics と異なり、接続・コミットを1回で完結させる。
+    """
+    if not metrics:
+        return
+    now = _now_iso()
+    tweet_params = [
+        (item["impressions"], item["likes"], item["retweets"], item["replies"], now, item["tweet_id"])
+        for item in metrics
+    ]
+    history_params = [
+        (item["tweet_id"], item["impressions"], item["likes"], item["retweets"], item["replies"], now)
+        for item in metrics
+    ]
+    async with _connect() as db:
+        await db.executemany(
+            """
+            UPDATE tweets
+            SET impressions = ?, likes = ?, retweets = ?, replies = ?, analytics_fetched_at = ?
+            WHERE tweet_id = ?
+            """,
+            tweet_params,
+        )
+        await db.executemany(
+            """
+            INSERT INTO tweet_metrics_history (tweet_id, impressions, likes, retweets, replies, fetched_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            history_params,
+        )
+        await db.commit()
+
+
 async def insert_tweet_metrics_snapshot(
     tweet_id: str,
     impressions: int,

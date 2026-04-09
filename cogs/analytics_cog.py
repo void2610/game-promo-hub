@@ -120,7 +120,7 @@ class AnalyticsCog(commands.Cog):
         history = await db.get_tweet_metrics_history(tweet_id)
         if not history:
             await interaction.response.send_message(
-                "この tweet_id のメトリクス履歴がありません。先に `/analytics_fetch` を実行してください。",
+                "この tweet_id のメトリクス履歴がありません。自動取得を待つか、今すぐ反映したい場合は `/analytics_fetch` を実行してください。",
                 ephemeral=True,
             )
             return
@@ -131,7 +131,11 @@ class AnalyticsCog(commands.Cog):
         )
         # 最新 10 件に絞って表示する（Discord の Embed フィールド上限は 25）
         for snapshot in history[-10:]:
-            fetched_at = str(snapshot.get("fetched_at") or "")[:16]
+            raw_fetched_at = snapshot.get("fetched_at") or ""
+            try:
+                fetched_at = datetime.fromisoformat(raw_fetched_at).strftime("%Y-%m-%d %H:%M")
+            except (ValueError, TypeError):
+                fetched_at = str(raw_fetched_at)[:16]
             embed.add_field(
                 name=fetched_at,
                 value=(

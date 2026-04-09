@@ -960,6 +960,53 @@ class DbOperationTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("game-beta", ids)
         self.assertEqual(len(ids), 2)
 
+    # ---- batch_update_tweet_analytics ----
+
+    async def test_batch_update_tweet_analytics_updates_tweets_and_history(self) -> None:
+        """batch_update_tweet_analytics が tweets を更新し、履歴を一括挿入することを確認する。"""
+        import config as cfg
+        from datetime import datetime
+
+        await self._add_game("batch-game", "Batch Game")
+        now_iso = datetime.now(cfg.JST).isoformat()
+        for tid in ["batch-tweet-01", "batch-tweet-02"]:
+            await db.add_tweet(
+                {
+                    "tweet_id": tid,
+                    "game_id": "batch-game",
+                    "lang": "ja",
+                    "content": f"content {tid}",
+                    "asset_id": None,
+                    "tone": "casual",
+                    "strategy_note": None,
+                    "posted_at": now_iso,
+                    "tweet_url": f"https://twitter.com/i/web/status/{tid}",
+                    "approved_by": "1",
+                    "reply_to_tweet_id": None,
+                }
+            )
+        metrics = [
+            {"tweet_id": "batch-tweet-01", "impressions": 100, "likes": 5, "retweets": 2, "replies": 1},
+            {"tweet_id": "batch-tweet-02", "impressions": 200, "likes": 10, "retweets": 4, "replies": 2},
+        ]
+        await db.batch_update_tweet_analytics(metrics)
+        # tweets テーブルが更新されているか確認
+        tweets = await db.get_recent_tweets_for_analytics("batch-game", days=90)
+        tweet_map = {t["tweet_id"]: t for t in tweets}
+        self.assertEqual(tweet_map["batch-tweet-01"]["impressions"], 100)
+        self.assertEqual(tweet_map["batch-tweet-02"]["impressions"], 200)
+        # tweet_metrics_history に挿入されているか確認
+        h1 = await db.get_tweet_metrics_history("batch-tweet-01")
+        h2 = await db.get_tweet_metrics_history("batch-tweet-02")
+        self.assertEqual(len(h1), 1)
+        self.assertEqual(h1[0]["impressions"], 100)
+        self.assertEqual(len(h2), 1)
+        self.assertEqual(h2[0]["impressions"], 200)
+
+    async def test_batch_update_tweet_analytics_empty(self) -> None:
+        """batch_update_tweet_analytics に空リストを渡してもエラーにならないことを確認する。"""
+        await db.batch_update_tweet_analytics([])  # should not raise
+
 
 if __name__ == "__main__":
     unittest.main()
