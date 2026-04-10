@@ -1,7 +1,8 @@
 # Game Promo Hub — アーキテクチャ設計書
 
 > 作成日: 2026-04-10  
-> ステータス: ドラフト（レビュー待ち）
+> 更新日: 2026-04-10  
+> ステータス: 決定済み（Next.js + Cloudflare Tunnel 採用）
 
 ---
 
@@ -65,27 +66,36 @@ Discord Bot (discord.py)
 
 ```
 ユーザー（ブラウザ）
-  │ HTTP / WebSocket
+  │ HTTPS（Cloudflare Tunnel → void2610.dev）
   ▼
-┌─────────────────────────────┐
-│       Web UI + API          │  ← 操作の主体
-│  FastAPI + Jinja2 / HTMX   │
-│  （または Next.js フロント） │
-└──────────┬──────────────────┘
-           │ aiosqlite
-           ▼
-       SQLite DB
-           │
-     ┌─────┴────────────────┐
-     │                      │
-     ▼                      ▼
+┌──────────────────────────────────┐
+│  Next.js 15（App Router / TS）   │  ← 操作の主体（フロントエンド）
+│  ポート 3000                      │
+└────────────┬─────────────────────┘
+             │ REST API (fetch / Server Actions)
+             ▼
+┌──────────────────────────────────┐
+│  FastAPI（Python / async）        │  ← バックエンド API
+│  ポート 8080                      │
+└────────────┬─────────────────────┘
+             │ aiosqlite
+             ▼
+         SQLite DB
+             │
+       ┌─────┴────────────────┐
+       │                      │
+       ▼                      ▼
 services/llm.py       services/twitter.py
 (Claude CLI)          (Playwright)
 
 Discord Bot（通知専用・同一プロセス内で共存）
-  ├── Web URL 共有
+  ├── Web URL 共有（void2610.dev）
   ├── 定期リマインド（APScheduler から呼び出し）
   └── 投稿完了・分析結果の通知
+
+Cloudflare Tunnel
+  └── void2610.dev → localhost:3000（Next.js）
+                  （または /api/* → localhost:8080 を split routing で）
 ```
 
 ### コンポーネント間の関係
@@ -98,54 +108,46 @@ Discord Bot（通知専用・同一プロセス内で共存）
     └─ 毎日朝 9時  → Discord へ「本日の状況」リマインド通知
 
 [FastAPI]
-    ├─ /api/*      → REST API エンドポイント（CRUD）
-    ├─ /*          → Jinja2 HTML ページ（SSR）
+    ├─ /api/*      → REST API エンドポイント（CRUD・JSON）
     └─ 起動時      → DB 初期化・Scheduler 起動・Discord Bot 起動
 
+[Next.js]
+    ├─ app/        → App Router ページ・レイアウト
+    ├─ app/api/*   → Route Handlers（認証チェック後 FastAPI へ proxy）
+    └─ 環境変数    → NEXT_PUBLIC_API_URL, NEXTAUTH_SECRET 等
+
 [Discord Bot]
-    ├─ on_ready    → 起動通知（Web UI の URL も掲載）
+    ├─ on_ready    → 起動通知（Web UI の URL: https://void2610.dev も掲載）
     └─ スラッシュコマンド（最小限）
          /link    → Web UI の URL を Ephemeral で返す
-         /status  → 現在のキュー状況サマリー（Web へのリンク付き）
+         /status  → キュー・スロット・ゲーム数のサマリー（詳細は Web へ）
 ```
 
 ---
 
 ## 4. 技術スタック
 
-### 推奨構成（Option A：Python 一本化・シンプル優先）
+### 採用構成（Next.js フルスタック）
 
 | レイヤー | 技術 | 理由 |
 |---|---|---|
-| **Web フレームワーク** | [FastAPI](https://fastapi.tiangolo.com/) | 既存 Python 資産をそのまま流用できる。async 対応。型安全 |
-| **テンプレート** | [Jinja2](https://jinja.palletsprojects.com/) | FastAPI 組み込み。ビルドステップ不要 |
-| **インタラクティブ UI** | [HTMX](https://htmx.org/) | JS フレームワーク不要でリッチな操作感。部分更新・フォーム送信 |
-| **CSS** | [TailwindCSS](https://tailwindcss.com/) CDN | ビルド不要の CDN 版で十分 |
-| **認証** | Bearer トークン（環境変数）| 個人運用ツールのため最小限。`WEB_SECRET_TOKEN` を設定 |
+| **フロントエンド** | [Next.js 15](https://nextjs.org/)（App Router・TypeScript） | Next.js の採用経験が豊富なため最初から採用。RSC・Server Actions で UX が高い |
+| **バックエンド API** | [FastAPI](https://fastapi.tiangolo.com/)（Python） | 既存 services/\* 資産をそのまま流用。async 対応・型安全 |
+| **認証** | [NextAuth.js v5](https://authjs.dev/)（Credentials Provider） | Next.js と統合しやすい。個人ツールなので最小限構成 |
+| **CSS** | [TailwindCSS v4](https://tailwindcss.com/) | Next.js と相性が良い。ビルド統合済み |
+| **グラフ** | [Recharts](https://recharts.org/) | React ネイティブ。アナリティクス画面に使用 |
 | **ASGI サーバー** | [Uvicorn](https://www.uvicorn.org/) | FastAPI 標準 |
 | **DB** | SQLite ＋ aiosqlite | 変更なし |
 | **Discord Bot** | discord.py | 変更なし（役割を縮小） |
 | **Scheduler** | APScheduler | 変更なし（FastAPI 起動時に同一プロセスで起動） |
 | **LLM** | Claude CLI（サブプロセス） | 変更なし |
 | **Twitter/X** | Playwright | 変更なし |
-| **パッケージ管理** | uv | 変更なし |
+| **パッケージ管理（Python）** | uv | 変更なし |
+| **パッケージ管理（JS）** | npm | Next.js 標準 |
+| **公開** | Cloudflare Tunnel | void2610.dev ドメイン経由で外部公開。詳細はセクション 9 |
 
-> **判断基準**：既存コードの大部分（services/\*）を再利用でき、移行コストが最小。  
-> フロントエンドに本格的な SPA が必要になったら後から Next.js へ切り出す。
-
----
-
-### 代替構成（Option B：フロントエンドを分離したい場合）
-
-| レイヤー | 技術 |
-|---|---|
-| **Backend API** | FastAPI（同上） |
-| **Frontend** | Next.js 15（App Router、TypeScript） |
-| **認証** | NextAuth.js + JWT |
-| **CSS** | TailwindCSS |
-
-Option B はフロントエンド開発経験があり、SPA の操作性（クライアントサイドルーティング・楽観的更新など）が必要な場合に選択する。  
-移行コストが高いため、MVP では **Option A を推奨**。
+> **判断基準**：Next.js の採用経験が多く、最初からフル機能の SPA として構築する。  
+> バックエンドは既存 Python 資産を活かすため FastAPI を維持し、Next.js からは API Route / Server Actions 経由で叩く。
 
 ---
 
@@ -240,29 +242,38 @@ Discord はユーザーが見ている可能性が高いチャンネルへの「
 game-promo-hub/
 ├── bot.py                    # Discord Bot エントリポイント（通知専用に縮小）
 ├── main.py                   # FastAPI + Discord Bot 統合起動エントリポイント（新規）
-├── config.py                 # 環境変数管理（WEB_SECRET_TOKEN など追加）
+├── config.py                 # 環境変数管理（WEB_BASE_URL など追加）
 ├── schema.sql                # DB スキーマ（変更なし）
 │
 ├── cogs/                     # Discord Cog（通知用に整理）
 │   ├── notify_cog.py         # 新規：通知・リマインド専用 Cog
 │   └── (既存 cog は段階的に削除・または /link, /status のみ残す)
 │
-├── web/                      # Web UI（新規）
+├── api/                      # FastAPI バックエンド（新規）
 │   ├── app.py                # FastAPI アプリ定義
-│   ├── routes/               # ルーター（ページ単位）
-│   │   ├── games.py
-│   │   ├── progress.py
-│   │   ├── appeals.py
-│   │   ├── assets.py
-│   │   ├── drafts.py
-│   │   ├── analytics.py
-│   │   └── schedule.py
-│   ├── templates/            # Jinja2 テンプレート
-│   │   ├── base.html
+│   └── routes/               # ルーター（リソース単位）
+│       ├── games.py
+│       ├── progress.py
+│       ├── appeals.py
+│       ├── assets.py
+│       ├── drafts.py
+│       ├── analytics.py
+│       └── schedule.py
+│
+├── frontend/                 # Next.js フロントエンド（新規）
+│   ├── app/                  # App Router
+│   │   ├── layout.tsx
+│   │   ├── page.tsx          # ダッシュボード
 │   │   ├── games/
 │   │   ├── drafts/
-│   │   └── ...
-│   └── static/               # CSS・JS（HTMX CDN 参照のみ等）
+│   │   ├── analytics/
+│   │   └── schedule/
+│   ├── components/           # 共通 React コンポーネント
+│   ├── lib/                  # API クライアント・ユーティリティ
+│   ├── public/
+│   ├── next.config.ts
+│   ├── tailwind.config.ts
+│   └── package.json
 │
 ├── services/                 # 変更なし
 │   ├── db.py
@@ -273,10 +284,10 @@ game-promo-hub/
 │
 ├── prompts/                  # 変更なし
 ├── assets/                   # ゲーム素材（変更なし）
-├── tests/                    # 既存テスト（変更なし） + Web ルートの追加
+├── tests/                    # 既存テスト（変更なし） + API ルートの追加
 │
-├── pyproject.toml            # fastapi, uvicorn, jinja2, python-multipart 追加
-├── .env.example              # WEB_SECRET_TOKEN, WEB_BASE_URL, WEB_PORT 追加
+├── pyproject.toml            # fastapi, uvicorn, python-multipart 追加
+├── .env.example              # WEB_BASE_URL, API_PORT, NEXTAUTH_SECRET 等追加
 └── ARCHITECTURE.md           # 本ドキュメント
 ```
 
@@ -285,10 +296,15 @@ game-promo-hub/
 ## 8. 環境変数追加分
 
 ```env
-# Web UI
-WEB_BASE_URL=http://localhost:8080          # Discord 通知内のリンクに使用
-WEB_PORT=8080
-WEB_SECRET_TOKEN=your_random_secret_token  # Bearer トークン認証
+# Web UI / API
+WEB_BASE_URL=https://void2610.dev          # Discord 通知内のリンクに使用
+API_PORT=8080                              # FastAPI ポート
+NEXT_PUBLIC_API_URL=http://localhost:8080  # Next.js から FastAPI へのアクセス先（開発時）
+
+# 認証（NextAuth.js）
+NEXTAUTH_URL=https://void2610.dev          # 本番 URL
+NEXTAUTH_SECRET=your_random_secret        # openssl rand -base64 32 で生成
+WEB_PASSWORD=your_login_password          # Credentials Provider のパスワード
 
 # Discord 通知チャンネル（通知送信先）
 DISCORD_NOTIFY_CHANNEL_ID=123456789012345678
@@ -296,51 +312,148 @@ DISCORD_NOTIFY_CHANNEL_ID=123456789012345678
 
 ---
 
-## 9. 起動方法（想定）
+## 9. Cloudflare Tunnel（void2610.dev）
+
+### 概要
+
+自宅マシン（またはローカルサーバー）上で動作する Next.js を、Cloudflare Tunnel を使って `void2610.dev` 経由で HTTPS 公開する。  
+Cloudflare 側でのポート開放・SSL 証明書管理が不要になり、ファイアウォールの内側から安全に公開できる。
+
+### セットアップ手順
 
 ```bash
-# 単一コマンドで FastAPI + Discord Bot を同時起動
-uv run python main.py
+# 1. cloudflared のインストール（Linux/macOS）
+# https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/
 
-# または個別起動（開発時）
-uv run uvicorn web.app:app --reload --port 8080
-uv run python bot.py
+# macOS
+brew install cloudflared
+
+# Linux（Debian/Ubuntu 系）
+curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb -o cloudflared.deb
+sudo dpkg -i cloudflared.deb
+
+# 2. Cloudflare アカウントへログイン
+cloudflared tunnel login
+
+# 3. トンネルを作成
+cloudflared tunnel create game-promo-hub
+
+# 4. 設定ファイルを作成（~/.cloudflared/config.yml）
+# 以下の内容を記述する（tunnel ID は手順 3 で発行されたものを使用）
 ```
 
-`main.py` では `asyncio` の同一イベントループ上で FastAPI（Uvicorn）と Discord Bot を並走させる。
+```yaml
+# ~/.cloudflared/config.yml
+tunnel: <YOUR_TUNNEL_ID>
+credentials-file: /home/<user>/.cloudflared/<YOUR_TUNNEL_ID>.json
+
+ingress:
+  # Next.js フロントエンド（メインドメイン）
+  - hostname: void2610.dev
+    service: http://localhost:3000
+  # FastAPI バックエンド API（サブドメイン or パス分岐）
+  - hostname: api.void2610.dev
+    service: http://localhost:8080
+  # フォールバック（必須）
+  - service: http_status:404
+```
+
+```bash
+# 5. DNS レコードを Cloudflare へ登録
+cloudflared tunnel route dns game-promo-hub void2610.dev
+cloudflared tunnel route dns game-promo-hub api.void2610.dev
+
+# 6. トンネルをサービスとして登録・起動（Linux systemd）
+sudo cloudflared service install
+sudo systemctl enable cloudflared
+sudo systemctl start cloudflared
+
+# 手動起動（開発・確認時）
+cloudflared tunnel run game-promo-hub
+```
+
+### ルーティング方針
+
+| ホスト | 転送先 | 内容 |
+|---|---|---|
+| `void2610.dev` | `localhost:3000` | Next.js（フロントエンド） |
+| `api.void2610.dev` | `localhost:8080` | FastAPI（バックエンド API） |
+
+> **Next.js から FastAPI への通信**：  
+> ブラウザからは `https://api.void2610.dev` へ直接リクエスト、または Next.js の Route Handlers（`/api/proxy/...`）経由で FastAPI へ転送する方式のどちらも可。  
+> 開発時は `NEXT_PUBLIC_API_URL=http://localhost:8080` を使うとローカルで動作確認できる。
+
+### セキュリティ考慮
+
+- Cloudflare Zero Trust（Access）を設定すると、ドメイン全体に認証レイヤーを追加できる（推奨）
+- NextAuth.js の Credentials Provider でもアプリレベルの認証は行う
+- FastAPI 側はローカルネットワーク内からのみ直接アクセス可能（Cloudflare Tunnel 経由を想定）
 
 ---
 
-## 10. 移行方針（段階的）
+## 10. 起動方法（想定）
 
-### Phase 1：Web UI の基盤構築（優先）
-- FastAPI セットアップ・認証ミドルウェア
-- DB の読み取り専用ページ（ゲーム一覧・進捗一覧・下書き一覧）
-- ゲーム・進捗・アピールポイントの登録フォーム
+```bash
+# バックエンド（FastAPI + Discord Bot）を起動
+uv run python main.py
 
-### Phase 2：下書き管理の Web 化
-- 下書き生成（LLM 呼び出し）・承認・却下
+# フロントエンド（Next.js）を起動
+cd frontend && npm run dev
+
+# Cloudflare Tunnel を起動（別ターミナル、または systemd で自動起動）
+cloudflared tunnel run game-promo-hub
+
+# または個別起動（開発時）
+uv run uvicorn api.app:app --reload --port 8080
+cd frontend && npm run dev   # ポート 3000
+```
+
+`main.py` では `asyncio` の同一イベントループ上で FastAPI（Uvicorn）と Discord Bot を並走させる。  
+Next.js は独立したプロセスで起動し、Cloudflare Tunnel が `void2610.dev → localhost:3000` へルーティングする。
+
+---
+
+## 11. 移行方針（段階的）
+
+### Phase 1：バックエンド API の構築（優先）
+- FastAPI セットアップ・CORS 設定（Next.js からのアクセスを許可）
+- DB の読み取り系 API（ゲーム一覧・進捗一覧・下書き一覧）
+- ゲーム・進捗・アピールポイントの登録 API
+
+### Phase 2：Next.js フロントエンドの構築
+- `create-next-app` でプロジェクト初期化（App Router・TypeScript・TailwindCSS）
+- NextAuth.js で Credentials Provider 認証
+- ゲーム・進捗・下書き一覧ページ
+
+### Phase 3：下書き管理の Web 化
+- 下書き生成 UI（LLM 呼び出し）・承認・却下
 - キュー管理画面
 
-### Phase 3：Discord 通知専用化
+### Phase 4：Discord 通知専用化
 - 通知 Cog の実装（投稿完了・リマインド）
 - 既存データ入力 Cog の削除
 
-### Phase 4：アナリティクス・スケジュール管理
-- ダッシュボード・グラフ
+### Phase 5：アナリティクス・スケジュール管理
+- Recharts でダッシュボード・グラフ
 - スロット管理 UI
+
+### Phase 6：Cloudflare Tunnel 本番設定
+- `void2610.dev` DNS・Tunnel 設定
+- Zero Trust Access の設定（任意）
+- 環境変数を本番用に切り替え（`NEXTAUTH_URL=https://void2610.dev` 等）
 
 ---
 
-## 11. 未決事項・検討事項
+## 12. 未決事項・検討事項
 
-| 項目 | 選択肢 | 備考 |
+| 項目 | 決定／選択肢 | 備考 |
 |---|---|---|
-| 認証方式 | Bearer トークン / HTTP Basic / パスワードページ | 個人ツールなので最小限で良い。VPN 下での利用を前提にするなら認証なしでも可 |
-| DB のマイグレーション | aiosqlite のまま / PostgreSQL へ移行 | SQLite で問題なければそのまま。複数人利用・将来のホスティングを考慮するなら Postgres |
-| デプロイ先 | ローカルマシン / VPS / Raspberry Pi / Docker | 自宅サーバーなら SQLite のまま。クラウドなら Postgres 化を検討 |
-| フロントエンド | Jinja2+HTMX / Next.js | 操作性 vs 開発コスト。MVP は Jinja2+HTMX を推奨 |
-| グラフ描画 | Chart.js（CDN）/ Recharts | Jinja2 構成なら Chart.js が最もシンプル |
-| ファイルアップロード | multipart → ローカル保存 | 現行と同様。クラウド保存が必要なら S3 等を検討 |
-| LLM | Claude CLI（現行）/ Anthropic API | API 化すればサーバー上でも動作可能（CLI は Claude が入った PC が必要） |
-| テスト | 既存 unittest / pytest + FastAPI TestClient | Web ルートのテストは TestClient で追加 |
+| **フロントエンド** | ✅ **Next.js 15（App Router）** | Next.js 経験が豊富なため最初から採用 |
+| **公開方法** | ✅ **Cloudflare Tunnel（void2610.dev）** | ファイアウォール内から HTTPS 公開 |
+| **認証方式** | NextAuth.js Credentials Provider | 個人ツール。パスワード 1 つで管理 |
+| **API と Next.js の通信** | サブドメイン（api.void2610.dev）vs Route Handlers Proxy | どちらでも可。シンプルさではサブドメイン分離を推奨 |
+| **DB のマイグレーション** | SQLite のまま | 個人・単一サーバー運用のため問題なし |
+| **グラフ描画** | Recharts | React ネイティブで Next.js と相性が良い |
+| **ファイルアップロード** | multipart → ローカル保存 | 現行と同様 |
+| **LLM** | Claude CLI（現行） | API 化すればサーバー上でも動作可能 |
+| **テスト** | 既存 unittest + FastAPI TestClient | Next.js 側は Playwright E2E も検討 |
