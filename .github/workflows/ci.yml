@@ -40,6 +40,8 @@ jobs:
           # bind-mount のターゲットをファイルとして事前作成（Docker はホスト側が存在しない場合ディレクトリを作成してしまう）
           touch promo.db twitter_session.json
           mkdir -p assets ~/.claude
+          # frontend の env_file が存在しないと compose コマンド全体が失敗するため空ファイルを作成
+          touch frontend/.env.local
 
       # ---- Dockerfile.api のビルド検証 ----
       - name: Build API image
