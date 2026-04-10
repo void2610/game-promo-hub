@@ -94,8 +94,9 @@ Discord Bot（通知専用・同一プロセス内で共存）
   └── 投稿完了・分析結果の通知
 
 Cloudflare Tunnel
-  └── void2610.dev → localhost:3000（Next.js）
-                  （または /api/* → localhost:8080 を split routing で）
+  ├── void2610.dev     → localhost:3000（Next.js）
+  └── api.void2610.dev → localhost:8080（FastAPI）
+      ※ パス分岐（/api/* 転送）は Next.js Route Handler と競合するため使用しない
 ```
 
 ### コンポーネント間の関係
@@ -108,7 +109,7 @@ Cloudflare Tunnel
     └─ 毎日朝 9時  → Discord へ「本日の状況」リマインド通知
 
 [FastAPI]
-    ├─ /api/*      → REST API エンドポイント（CRUD・JSON）
+    ├─ /v1/*      → REST API エンドポイント（CRUD・JSON）
     └─ 起動時      → DB 初期化・Scheduler 起動・Discord Bot 起動
 
 [Next.js]
@@ -297,14 +298,18 @@ game-promo-hub/
 
 ```env
 # Web UI / API
-WEB_BASE_URL=https://void2610.dev          # Discord 通知内のリンクに使用
-API_PORT=8080                              # FastAPI ポート
-NEXT_PUBLIC_API_URL=http://localhost:8080  # Next.js から FastAPI へのアクセス先（開発時）
+WEB_BASE_URL=https://void2610.dev           # Discord 通知内のリンクに使用
+API_PORT=8080                               # FastAPI ポート
+
+# Next.js → FastAPI 通信（サーバーサイド専用変数・NEXT_PUBLIC_ は付けない）
+# ブラウザから直接叩く構成は採らず、Route Handlers 経由で通信する
+API_INTERNAL_URL=http://localhost:8080      # 開発時
+# API_INTERNAL_URL=http://localhost:8080   # 本番でも同一サーバー上なら localhost のまま
 
 # 認証（NextAuth.js）
-NEXTAUTH_URL=https://void2610.dev          # 本番 URL
-NEXTAUTH_SECRET=your_random_secret        # openssl rand -base64 32 で生成
-WEB_PASSWORD=your_login_password          # Credentials Provider のパスワード
+NEXTAUTH_URL=https://void2610.dev           # 本番 URL
+NEXTAUTH_SECRET=your_random_secret         # openssl rand -base64 32 で生成
+WEB_PASSWORD=change_me                     # 実値は openssl rand -base64 32 等で生成すること
 
 # Discord 通知チャンネル（通知送信先）
 DISCORD_NOTIFY_CHANNEL_ID=123456789012345678
@@ -379,15 +384,19 @@ cloudflared tunnel run game-promo-hub
 | `void2610.dev` | `localhost:3000` | Next.js（フロントエンド） |
 | `api.void2610.dev` | `localhost:8080` | FastAPI（バックエンド API） |
 
-> **Next.js から FastAPI への通信**：  
-> ブラウザからは `https://api.void2610.dev` へ直接リクエスト、または Next.js の Route Handlers（`/api/proxy/...`）経由で FastAPI へ転送する方式のどちらも可。  
-> 開発時は `NEXT_PUBLIC_API_URL=http://localhost:8080` を使うとローカルで動作確認できる。
+> **Next.js から FastAPI への通信（推奨構成）**：  
+> ブラウザからは Next.js の Route Handlers（`/api/proxy/...`）のみを呼び出し、NextAuth.js の認証チェック通過後に Server Side から FastAPI へ転送する。  
+> `NEXT_PUBLIC_` 変数で FastAPI の URL をブラウザに露出させず、サーバー専用変数（`API_INTERNAL_URL`）として管理する。  
+> 同一サーバー上であれば `http://localhost:8080` のままで本番でも機能する。
 
 ### セキュリティ考慮
 
-- Cloudflare Zero Trust（Access）を設定すると、ドメイン全体に認証レイヤーを追加できる（推奨）
-- NextAuth.js の Credentials Provider でもアプリレベルの認証は行う
-- FastAPI 側はローカルネットワーク内からのみ直接アクセス可能（Cloudflare Tunnel 経由を想定）
+- `api.void2610.dev` は Cloudflare Tunnel により `localhost:8080` へ転送されるため、FastAPI は **Cloudflare 経由で外部から到達可能な公開 API** として扱う
+- Cloudflare Zero Trust（Access）を `void2610.dev` と `api.void2610.dev` の両方に設定し、認証レイヤーを追加する（推奨）
+- NextAuth.js の Credentials Provider によるアプリレベルの認証に加え、FastAPI の Route Handler Proxy 経由のみでアクセスさせることで認証を一元化する
+- Cloudflare 側またはアプリ側でレート制限・Bot 対策を有効化し、総当たりアクセスに備える
+- FastAPI の CORS 設定は `void2610.dev` のみを許可オリジンに限定する
+- Tunnel の利用のみをもってアプリレベルの保護を省略しない
 
 ---
 
