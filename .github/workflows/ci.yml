@@ -7,6 +7,93 @@ on:
     branches: ["main"]
 
 jobs:
+  docker:
+    name: Docker Build & Smoke Test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # ---- CI 用プレースホルダーファイルを作成 ----
+      # compose.yaml の env_file / bind-mount が要求するファイル・ディレクトリを用意する
+      - name: Create CI placeholder files
+        run: |
+          # API の env_file（DISCORD_ENABLED=false でBot起動をスキップ）
+          cat > .env <<'EOF'
+          DISCORD_ENABLED=false
+          DISCORD_TOKEN=ci_placeholder
+          DISCORD_GUILD_ID=1
+          ALLOWED_USER_IDS=1
+          TWITTER_USERNAME=ci_placeholder
+          TWITTER_PASSWORD=ci_placeholder
+          API_PORT=8080
+          PROMO_DB_PATH=promo.db
+          ASSETS_DIR=assets
+          DISCORD_NOTIFY_CHANNEL_ID=1
+          CORS_ALLOWED_ORIGINS=http://localhost:3000
+          EOF
+          # bind-mount のターゲットをファイルとして事前作成（Docker はホスト側が存在しない場合ディレクトリを作成してしまう）
+          touch promo.db twitter_session.json
+          mkdir -p assets ~/.claude
+
+      # ---- Dockerfile.api のビルド検証 ----
+      - name: Build API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.api
+          push: false
+          load: true
+          tags: game-promo-hub-api:latest
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+
+      # ---- frontend/Dockerfile のビルド検証 ----
+      - name: Build Frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: false
+          load: true
+          tags: game-promo-hub-frontend:latest
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
+
+      # ---- API 起動スモークテスト ----
+      # ビルド済みイメージを使用（--no-build）して API コンテナを起動
+      - name: Start API service
+        run: docker compose up -d --no-build api
+
+      - name: Wait for API health endpoint
+        run: |
+          echo "Waiting for API to become healthy..."
+          for i in $(seq 1 30); do
+            response=$(curl -sf http://localhost:8080/health 2>/dev/null || true)
+            if echo "$response" | grep -q '"ok"'; then
+              echo "✅ API is healthy: $response"
+              exit 0
+            fi
+            echo "[$i/30] Not ready yet, retrying in 2s..."
+            sleep 2
+          done
+          echo "❌ Health check timed out after 60s"
+          docker compose logs api
+          exit 1
+
+      - name: Show API logs
+        if: always()
+        run: docker compose logs api
+
+      - name: Teardown
+        if: always()
+        run: docker compose down -v
+
   test:
     runs-on: ubuntu-latest
     permissions:
