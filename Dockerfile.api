@@ -5,8 +5,11 @@ FROM mcr.microsoft.com/playwright/python:v1.50.0-jammy
 WORKDIR /app
 
 # Node.js LTS + Claude CLI のインストール
-RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
-    && apt-get install -y nodejs \
+# 公式バイナリを直接ダウンロードして展開
+RUN apt-get update \
+    && apt-get install -y curl ca-certificates xz-utils \
+    && curl -fsSL https://nodejs.org/dist/v22.14.0/node-v22.14.0-linux-x64.tar.xz \
+       | tar -xJ --strip-components=1 -C /usr/local \
     && npm install -g @anthropic-ai/claude-code \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 

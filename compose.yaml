@@ -12,6 +12,8 @@ services:
       - "${CLAUDE_CONFIG_DIR:-~/.claude}:/root/.claude"
     env_file:
       - .env
+    environment:
+      - DISCORD_ENABLED=${DISCORD_ENABLED:-true}
     restart: unless-stopped
 
   frontend:
