@@ -17,6 +17,9 @@ class SlotUpdate(BaseModel):
     enabled: int | None = None
 
 
+_SLOT_UPDATE_COLUMNS = frozenset(SlotUpdate.model_fields.keys())
+
+
 @router.get("/slots")
 async def list_slots() -> list[dict]:
     async with aiosqlite.connect(config.DB_PATH) as db:
@@ -54,7 +57,11 @@ async def get_slot(slot_id: int) -> dict:
 
 @router.patch("/slots/{slot_id}")
 async def update_slot(slot_id: int, slot: SlotUpdate) -> dict:
-    fields = {k: v for k, v in slot.model_dump().items() if v is not None}
+    fields = {
+        k: v
+        for k, v in slot.model_dump().items()
+        if v is not None and k in _SLOT_UPDATE_COLUMNS
+    }
     if not fields:
         return await get_slot(slot_id)
     set_clause = ", ".join(f"{k} = ?" for k in fields)

@@ -28,6 +28,9 @@ class ProgressUpdate(BaseModel):
     tweeted: int | None = None
 
 
+_PROGRESS_UPDATE_COLUMNS = frozenset(ProgressUpdate.model_fields.keys())
+
+
 @router.get("")
 async def list_progress(game_id: str | None = None) -> list[dict]:
     query = "SELECT * FROM progress_logs"
@@ -78,7 +81,11 @@ async def create_progress(progress: ProgressCreate) -> dict:
 
 @router.patch("/{progress_id}")
 async def update_progress(progress_id: int, progress: ProgressUpdate) -> dict:
-    fields = {k: v for k, v in progress.model_dump().items() if v is not None}
+    fields = {
+        k: v
+        for k, v in progress.model_dump().items()
+        if v is not None and k in _PROGRESS_UPDATE_COLUMNS
+    }
     if not fields:
         return await get_progress(progress_id)
     set_clause = ", ".join(f"{k} = ?" for k in fields)

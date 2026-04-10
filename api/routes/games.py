@@ -38,6 +38,9 @@ class GameUpdate(BaseModel):
     circle: str | None = None
 
 
+_GAME_UPDATE_COLUMNS = frozenset(GameUpdate.model_fields.keys())
+
+
 @router.get("")
 async def list_games() -> list[dict]:
     async with aiosqlite.connect(config.DB_PATH) as db:
@@ -82,7 +85,11 @@ async def create_game(game: GameCreate) -> dict:
 
 @router.patch("/{game_id}")
 async def update_game(game_id: str, game: GameUpdate) -> dict:
-    fields = {k: v for k, v in game.model_dump().items() if v is not None}
+    fields = {
+        k: v
+        for k, v in game.model_dump().items()
+        if v is not None and k in _GAME_UPDATE_COLUMNS
+    }
     if not fields:
         return await get_game(game_id)
     set_clause = ", ".join(f"{k} = ?" for k in fields)

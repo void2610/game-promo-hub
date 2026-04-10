@@ -15,6 +15,9 @@ class DraftUpdate(BaseModel):
     approved_by: str | None = None
 
 
+_DRAFT_UPDATE_COLUMNS = frozenset(DraftUpdate.model_fields.keys()) | {"approved_at"}
+
+
 @router.get("")
 async def list_drafts(
     status: str | None = None,
@@ -56,7 +59,11 @@ async def get_draft(draft_id: int) -> dict:
 
 @router.patch("/{draft_id}")
 async def update_draft(draft_id: int, draft: DraftUpdate) -> dict:
-    fields = {k: v for k, v in draft.model_dump().items() if v is not None}
+    fields = {
+        k: v
+        for k, v in draft.model_dump().items()
+        if v is not None and k in _DRAFT_UPDATE_COLUMNS
+    }
     if not fields:
         return await get_draft(draft_id)
     # approved_at を自動設定

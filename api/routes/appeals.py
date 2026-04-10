@@ -26,6 +26,9 @@ class AppealUpdate(BaseModel):
     promo_tips: str | None = None
 
 
+_APPEAL_UPDATE_COLUMNS = frozenset(AppealUpdate.model_fields.keys())
+
+
 @router.get("")
 async def list_appeals(game_id: str | None = None) -> list[dict]:
     query = "SELECT * FROM appeal_points"
@@ -72,7 +75,11 @@ async def create_appeal(appeal: AppealCreate) -> dict:
 
 @router.patch("/{appeal_id}")
 async def update_appeal(appeal_id: int, appeal: AppealUpdate) -> dict:
-    fields = {k: v for k, v in appeal.model_dump().items() if v is not None}
+    fields = {
+        k: v
+        for k, v in appeal.model_dump().items()
+        if v is not None and k in _APPEAL_UPDATE_COLUMNS
+    }
     if not fields:
         return await get_appeal(appeal_id)
     set_clause = ", ".join(f"{k} = ?" for k in fields)
