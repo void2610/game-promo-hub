@@ -17,15 +17,15 @@ class GameAddModal(discord.ui.Modal, title="ゲーム登録"):
     name_ja = discord.ui.TextInput(label="日本語名", max_length=100)
     name_en = discord.ui.TextInput(label="英語名", required=False, max_length=100)
     genre = discord.ui.TextInput(label="ジャンル", required=False, max_length=100)
-    hashtags = discord.ui.TextInput(
-        label="ハッシュタグ",
-        placeholder="#庭小人,#indiegame",
-        required=False,
-        style=discord.TextStyle.paragraph,
-    )
     details = discord.ui.TextInput(
         label="補足",
-        placeholder="platform=Steam\nstatus=development\ncircle=ねこのおでこ\nsteam_url=...",
+        placeholder=(
+            "platform=Steam\n"
+            "status=development\n"
+            "hashtags=#庭小人,#indiegame\n"
+            "circle=ねこのおでこ\n"
+            "steam_url=..."
+        ),
         required=False,
         style=discord.TextStyle.paragraph,
     )
@@ -54,7 +54,7 @@ class GameAddModal(discord.ui.Modal, title="ゲーム登録"):
                     "steam_url": detail_map.get("steam_url"),
                     "elevator_ja": detail_map.get("elevator_ja"),
                     "elevator_en": detail_map.get("elevator_en"),
-                    "hashtags": parse_list_input(str(self.hashtags)),
+                    "hashtags": parse_list_input(detail_map.get("hashtags", "")),
                     "target_audience": parse_list_input(detail_map.get("target_audience", "")),
                     "circle": detail_map.get("circle"),
                 }

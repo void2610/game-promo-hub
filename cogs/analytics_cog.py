@@ -8,7 +8,7 @@ from discord.ext import commands
 
 from config import JST
 from services import db, llm, twitter
-from services.discord_utils import ensure_allowed
+from services.discord_utils import autocomplete_game_id, ensure_allowed
 
 
 class AnalyticsCog(commands.Cog):
@@ -18,6 +18,7 @@ class AnalyticsCog(commands.Cog):
         self.bot = bot
 
     @app_commands.command(name="analytics_fetch", description="X/Twitter のメトリクスを今すぐ手動取得する")
+    @app_commands.autocomplete(game_id=autocomplete_game_id)
     async def analytics_fetch(self, interaction: discord.Interaction, game_id: str) -> None:
         """直近 90 日のツイートのメトリクスを Twitter API から一括取得して DB に保存する。
         すでに取得済みのツイートも再取得して最新値に更新し、履歴に追記する。
@@ -36,6 +37,7 @@ class AnalyticsCog(commands.Cog):
         await interaction.followup.send(f"{len(metrics)} 件のメトリクスを更新しました。", ephemeral=True)
 
     @app_commands.command(name="analytics_report", description="宣伝分析レポートを生成する")
+    @app_commands.autocomplete(game_id=autocomplete_game_id)
     async def analytics_report(
         self,
         interaction: discord.Interaction,
@@ -84,6 +86,7 @@ class AnalyticsCog(commands.Cog):
         await interaction.followup.send(embed=embed, ephemeral=True)
 
     @app_commands.command(name="analytics_top", description="エンゲージメント上位投稿を表示する")
+    @app_commands.autocomplete(game_id=autocomplete_game_id)
     async def analytics_top(
         self,
         interaction: discord.Interaction,
@@ -152,4 +155,3 @@ class AnalyticsCog(commands.Cog):
 async def setup(bot: commands.Bot) -> None:
     """Cog を Bot に登録するセットアップ関数。"""
     await bot.add_cog(AnalyticsCog(bot))
-

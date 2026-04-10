@@ -8,7 +8,14 @@ from discord.ext import commands
 
 from config import JST
 from services import db
-from services.discord_utils import ensure_allowed
+from services.discord_utils import autocomplete_game_id, ensure_allowed
+
+
+EXCITEMENT_CHOICES = [
+    app_commands.Choice(name="1", value=1),
+    app_commands.Choice(name="2", value=2),
+    app_commands.Choice(name="3", value=3),
+]
 
 
 class ProgressAddModal(discord.ui.Modal, title="進捗登録"):
@@ -65,11 +72,13 @@ class ProgressCog(commands.Cog):
 
     @app_commands.command(name="progress_add", description="進捗ログを追加する")
     @app_commands.describe(game_id="ゲームID", excitement="1-3", tweetable="投稿候補に含めるか")
+    @app_commands.choices(excitement=EXCITEMENT_CHOICES)
+    @app_commands.autocomplete(game_id=autocomplete_game_id)
     async def progress_add(
         self,
         interaction: discord.Interaction,
         game_id: str,
-        excitement: app_commands.Range[int, 1, 3] = 2,
+        excitement: int = 2,
         tweetable: bool = True,
     ) -> None:
         """進捗登録モーダルを開く。excitement と tweetable フラグをモーダルに引き渡す。"""
@@ -81,4 +90,3 @@ class ProgressCog(commands.Cog):
 async def setup(bot: commands.Bot) -> None:
     """Cog を Bot に登録するセットアップ関数。"""
     await bot.add_cog(ProgressCog(bot))
-

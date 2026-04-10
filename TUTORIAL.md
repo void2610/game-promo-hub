@@ -20,10 +20,9 @@ Discordで `/game_add` と入力すると、ゲーム登録モーダルが開き
 | 日本語名 | `庭小人の冒険` |
 | 英語名 | `Garden Gnome Adventure` |
 | ジャンル | `パズルアクション` |
-| ハッシュタグ | `#庭小人,#indiegame,#IndieGameDev` |
-| 補足 | `platform=Steam`<br>`status=development`<br>`circle=ねこのおでこ`<br>`elevator_ja=庭に潜む小人を操って謎を解くパズルアクション` |
+| 補足 | `platform=Steam`<br>`status=development`<br>`hashtags=#庭小人,#indiegame,#IndieGameDev`<br>`circle=ねこのおでこ`<br>`elevator_ja=庭に潜む小人を操って謎を解くパズルアクション` |
 
-> **補足欄について**: `key=value` の形式で複数の情報を入力できます。`platform`、`status`、`circle`、`steam_url`、`elevator_ja`、`elevator_en`、`target_audience` などが設定可能です。
+> **補足欄について**: `key=value` の形式で複数の情報を入力できます。`platform`、`status`、`hashtags`、`circle`、`steam_url`、`elevator_ja`、`elevator_en`、`target_audience` などが設定可能です。
 
 **入力後の結果**: ゲームが登録されると、登録内容を示すEmbed（ID・名前・ハッシュタグ）が表示されます。
 

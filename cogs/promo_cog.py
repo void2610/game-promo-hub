@@ -7,12 +7,16 @@ from discord import app_commands
 from discord.ext import commands
 
 from services import db, llm
-from services.discord_utils import ensure_allowed, format_hashtags
+from services.discord_utils import autocomplete_game_id, ensure_allowed, format_hashtags
 
 # 有効なモード・言語・トーンの一覧
 VALID_MODES = ("progress", "appeal", "milestone", "random", "technical", "character", "art", "story")
 VALID_LANGS = ("ja", "en", "both")
 VALID_TONES = ("excited", "casual", "technical", "mysterious")
+
+MODE_CHOICES = [app_commands.Choice(name=value, value=value) for value in VALID_MODES]
+LANG_CHOICES = [app_commands.Choice(name=value, value=value) for value in VALID_LANGS]
+TONE_CHOICES = [app_commands.Choice(name=value, value=value) for value in VALID_TONES]
 
 
 class ApprovalView(discord.ui.View):
@@ -70,6 +74,7 @@ class PromoCog(commands.Cog):
         self.bot = bot
 
     @app_commands.command(name="draft_list", description="既存の下書きを一覧表示する")
+    @app_commands.autocomplete(game_id=autocomplete_game_id)
     async def draft_list(
         self,
         interaction: discord.Interaction,
@@ -123,6 +128,9 @@ class PromoCog(commands.Cog):
         await interaction.followup.send(embed=embed, ephemeral=True)
 
     @app_commands.command(name="promo_draft", description="ツイート下書きを生成する")
+    @app_commands.describe(game_id="ゲームID", mode="生成モード", lang="言語", tone="トーン")
+    @app_commands.choices(mode=MODE_CHOICES, lang=LANG_CHOICES, tone=TONE_CHOICES)
+    @app_commands.autocomplete(game_id=autocomplete_game_id)
     async def promo_draft(
         self,
         interaction: discord.Interaction,

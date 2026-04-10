@@ -8,7 +8,16 @@ from discord.ext import commands
 
 from config import ASSETS_DIR
 from services import db
-from services.discord_utils import ensure_allowed
+from services.discord_utils import autocomplete_game_id, ensure_allowed
+
+
+ASSET_USAGE_CHOICES = [
+    app_commands.Choice(name="initial", value="initial"),
+    app_commands.Choice(name="technical", value="technical"),
+    app_commands.Choice(name="character", value="character"),
+    app_commands.Choice(name="milestone", value="milestone"),
+    app_commands.Choice(name="any", value="any"),
+]
 
 
 class AssetCog(commands.Cog):
@@ -24,6 +33,8 @@ class AssetCog(commands.Cog):
         description="素材の説明",
         recommended_for="initial / technical / character / milestone / any",
     )
+    @app_commands.choices(recommended_for=ASSET_USAGE_CHOICES)
+    @app_commands.autocomplete(game_id=autocomplete_game_id)
     async def asset_add(
         self,
         interaction: discord.Interaction,
@@ -70,4 +81,3 @@ class AssetCog(commands.Cog):
 async def setup(bot: commands.Bot) -> None:
     """Cog を Bot に登録するセットアップ関数。"""
     await bot.add_cog(AssetCog(bot))
-
