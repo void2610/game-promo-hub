@@ -1,0 +1,30 @@
+# ---- ベース ----
+# Playwright 公式イメージ（Python + Chromium + 必要な Linux ライブラリ同梱）
+FROM mcr.microsoft.com/playwright/python:v1.50.0-jammy
+
+WORKDIR /app
+
+# Node.js LTS + Claude CLI のインストール
+# 公式バイナリを直接ダウンロードして展開
+RUN apt-get update \
+    && apt-get install -y curl ca-certificates xz-utils \
+    && curl -fsSL https://nodejs.org/dist/v22.14.0/node-v22.14.0-linux-x64.tar.xz \
+       | tar -xJ --strip-components=1 -C /usr/local \
+    && npm install -g @anthropic-ai/claude-code \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# uv のインストール
+RUN pip install uv
+
+# Python 依存関係のインストール（キャッシュ効率のため先にロックファイルをコピー）
+COPY pyproject.toml uv.lock ./
+RUN uv sync --no-dev
+
+# アプリケーションコードのコピー
+COPY . .
+
+# Playwright ブラウザはベースイメージ同梱の Chromium を使用（追加インストール不要）
+
+EXPOSE 8080
+
+CMD ["uv", "run", "python", "main.py"]
