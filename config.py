@@ -67,3 +67,15 @@ def validate_twitter_config() -> None:
     require_env("TWITTER_USERNAME", TWITTER_USERNAME)
     require_env("TWITTER_PASSWORD", TWITTER_PASSWORD)
 
+
+# FastAPI / Web UI
+API_PORT = int(os.getenv("API_PORT", "8080"))
+# Web UI のベース URL（Discord 通知内のリンクに使用）
+WEB_BASE_URL = os.getenv("WEB_BASE_URL", "http://localhost:3000")
+# Next.js からの内部 API 通信用 URL（サーバーサイド専用）
+API_INTERNAL_URL = os.getenv("API_INTERNAL_URL", "http://localhost:8080")
+# CORS 許可オリジン（カンマ区切り）
+CORS_ALLOWED_ORIGINS = os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000")
+# Discord 通知チャンネル ID
+DISCORD_NOTIFY_CHANNEL_ID = int(os.getenv("DISCORD_NOTIFY_CHANNEL_ID", "0")) or None
+

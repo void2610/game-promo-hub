@@ -1,0 +1,39 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./promo.db:/app/promo.db
+      - ./assets:/app/assets
+      - ./twitter_session.json:/app/twitter_session.json
+      - "${CLAUDE_CONFIG_DIR:-~/.claude}:/root/.claude"
+    env_file:
+      - .env
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - API_INTERNAL_URL=http://api:8080
+    env_file:
+      - ./frontend/.env.local
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run --token ${TUNNEL_TOKEN}
+    profiles:
+      - tunnel
+    depends_on:
+      - api
+      - frontend
+    restart: unless-stopped
