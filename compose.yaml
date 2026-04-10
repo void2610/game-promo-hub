@@ -3,13 +3,14 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.api
+    image: game-promo-hub-api:latest
     ports:
       - "8080:8080"
     volumes:
       - ./promo.db:/app/promo.db
       - ./assets:/app/assets
       - ./twitter_session.json:/app/twitter_session.json
-      - "${CLAUDE_CONFIG_DIR:-~/.claude}:/root/.claude"
+      - "${CLAUDE_CONFIG_DIR:-${HOME}/.claude}:/root/.claude"
     env_file:
       - .env
     environment:
@@ -20,6 +21,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+    image: game-promo-hub-frontend:latest
     ports:
       - "3000:3000"
     environment:

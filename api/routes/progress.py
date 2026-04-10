@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-import aiosqlite
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-import config
+from api.db import connect
 
 router = APIRouter()
 
@@ -39,8 +38,7 @@ async def list_progress(game_id: str | None = None) -> list[dict]:
         query += " WHERE game_id = ?"
         params.append(game_id)
     query += " ORDER BY log_date DESC, created_at DESC"
-    async with aiosqlite.connect(config.DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
+    async with connect() as db:
         async with db.execute(query, params) as cur:
             rows = await cur.fetchall()
     return [dict(row) for row in rows]
@@ -48,8 +46,7 @@ async def list_progress(game_id: str | None = None) -> list[dict]:
 
 @router.get("/{progress_id}")
 async def get_progress(progress_id: int) -> dict:
-    async with aiosqlite.connect(config.DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
+    async with connect() as db:
         async with db.execute(
             "SELECT * FROM progress_logs WHERE id = ?", (progress_id,)
         ) as cur:
@@ -61,7 +58,7 @@ async def get_progress(progress_id: int) -> dict:
 
 @router.post("", status_code=201)
 async def create_progress(progress: ProgressCreate) -> dict:
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute(
             """
             INSERT INTO progress_logs (game_id, log_date, milestone, content,
@@ -90,7 +87,7 @@ async def update_progress(progress_id: int, progress: ProgressUpdate) -> dict:
         return await get_progress(progress_id)
     set_clause = ", ".join(f"{k} = ?" for k in fields)
     values = list(fields.values()) + [progress_id]
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with connect() as db:
         result = await db.execute(
             f"UPDATE progress_logs SET {set_clause} WHERE id = ?", values
         )
@@ -102,7 +99,7 @@ async def update_progress(progress_id: int, progress: ProgressUpdate) -> dict:
 
 @router.delete("/{progress_id}", status_code=204)
 async def delete_progress(progress_id: int) -> None:
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with connect() as db:
         result = await db.execute(
             "DELETE FROM progress_logs WHERE id = ?", (progress_id,)
         )

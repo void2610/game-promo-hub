@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import aiosqlite
 from fastapi import APIRouter
 
-import config
+from api.db import connect
 
 router = APIRouter()
 
@@ -16,8 +15,7 @@ async def list_tweets(game_id: str | None = None) -> list[dict]:
         query += " WHERE game_id = ?"
         params.append(game_id)
     query += " ORDER BY posted_at DESC"
-    async with aiosqlite.connect(config.DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
+    async with connect() as db:
         async with db.execute(query, params) as cur:
             rows = await cur.fetchall()
     return [dict(row) for row in rows]
@@ -31,8 +29,7 @@ async def list_summaries(game_id: str | None = None) -> list[dict]:
         query += " WHERE game_id = ?"
         params.append(game_id)
     query += " ORDER BY created_at DESC"
-    async with aiosqlite.connect(config.DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
+    async with connect() as db:
         async with db.execute(query, params) as cur:
             rows = await cur.fetchall()
     return [dict(row) for row in rows]
@@ -46,8 +43,7 @@ async def list_metrics_history(tweet_id: str | None = None) -> list[dict]:
         query += " WHERE tweet_id = ?"
         params.append(tweet_id)
     query += " ORDER BY fetched_at ASC"
-    async with aiosqlite.connect(config.DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
+    async with connect() as db:
         async with db.execute(query, params) as cur:
             rows = await cur.fetchall()
     return [dict(row) for row in rows]

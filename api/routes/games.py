@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-import aiosqlite
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-import config
+from api.db import connect
 
 router = APIRouter()
 
@@ -43,8 +42,7 @@ _GAME_UPDATE_COLUMNS = frozenset(GameUpdate.model_fields.keys())
 
 @router.get("")
 async def list_games() -> list[dict]:
-    async with aiosqlite.connect(config.DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
+    async with connect() as db:
         async with db.execute(
             "SELECT * FROM games ORDER BY created_at DESC"
         ) as cur:
@@ -54,8 +52,7 @@ async def list_games() -> list[dict]:
 
 @router.get("/{game_id}")
 async def get_game(game_id: str) -> dict:
-    async with aiosqlite.connect(config.DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
+    async with connect() as db:
         async with db.execute("SELECT * FROM games WHERE id = ?", (game_id,)) as cur:
             row = await cur.fetchone()
     if row is None:
@@ -65,7 +62,7 @@ async def get_game(game_id: str) -> dict:
 
 @router.post("", status_code=201)
 async def create_game(game: GameCreate) -> dict:
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with connect() as db:
         await db.execute(
             """
             INSERT INTO games (id, name_ja, name_en, genre, platform, status,
@@ -94,7 +91,7 @@ async def update_game(game_id: str, game: GameUpdate) -> dict:
         return await get_game(game_id)
     set_clause = ", ".join(f"{k} = ?" for k in fields)
     values = list(fields.values()) + [game_id]
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with connect() as db:
         result = await db.execute(
             f"UPDATE games SET {set_clause}, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             values,
@@ -107,7 +104,7 @@ async def update_game(game_id: str, game: GameUpdate) -> dict:
 
 @router.delete("/{game_id}", status_code=204)
 async def delete_game(game_id: str) -> None:
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with connect() as db:
         result = await db.execute("DELETE FROM games WHERE id = ?", (game_id,))
         await db.commit()
         if result.rowcount == 0:

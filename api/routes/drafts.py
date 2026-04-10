@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-import aiosqlite
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-import config
+from api.db import connect
 
 router = APIRouter()
 
@@ -37,8 +36,7 @@ async def list_drafts(
         {where}
         ORDER BY created_at DESC
     """
-    async with aiosqlite.connect(config.DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
+    async with connect() as db:
         async with db.execute(query, params) as cur:
             rows = await cur.fetchall()
     return [dict(row) for row in rows]
@@ -46,8 +44,7 @@ async def list_drafts(
 
 @router.get("/{draft_id}")
 async def get_draft(draft_id: int) -> dict:
-    async with aiosqlite.connect(config.DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
+    async with connect() as db:
         async with db.execute(
             "SELECT * FROM tweet_drafts WHERE id = ?", (draft_id,)
         ) as cur:
@@ -80,7 +77,7 @@ async def update_draft(draft_id: int, draft: DraftUpdate) -> dict:
             values.append(v)
     values.append(draft_id)
 
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with connect() as db:
         result = await db.execute(
             f"UPDATE tweet_drafts SET {', '.join(set_parts)} WHERE id = ?", values
         )
@@ -92,7 +89,7 @@ async def update_draft(draft_id: int, draft: DraftUpdate) -> dict:
 
 @router.delete("/{draft_id}", status_code=204)
 async def delete_draft(draft_id: int) -> None:
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with connect() as db:
         result = await db.execute(
             "DELETE FROM tweet_drafts WHERE id = ?", (draft_id,)
         )

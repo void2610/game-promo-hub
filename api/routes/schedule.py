@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-import aiosqlite
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-import config
+from api.db import connect
 
 router = APIRouter()
 
@@ -22,8 +21,7 @@ _SLOT_UPDATE_COLUMNS = frozenset(SlotUpdate.model_fields.keys())
 
 @router.get("/slots")
 async def list_slots() -> list[dict]:
-    async with aiosqlite.connect(config.DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
+    async with connect() as db:
         async with db.execute(
             "SELECT * FROM schedule_slots ORDER BY slot_time ASC"
         ) as cur:
@@ -33,7 +31,7 @@ async def list_slots() -> list[dict]:
 
 @router.post("/slots", status_code=201)
 async def create_slot(slot: SlotCreate) -> dict:
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute(
             "INSERT INTO schedule_slots (slot_time) VALUES (?)", (slot.slot_time,)
         )
@@ -44,8 +42,7 @@ async def create_slot(slot: SlotCreate) -> dict:
 
 @router.get("/slots/{slot_id}")
 async def get_slot(slot_id: int) -> dict:
-    async with aiosqlite.connect(config.DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
+    async with connect() as db:
         async with db.execute(
             "SELECT * FROM schedule_slots WHERE id = ?", (slot_id,)
         ) as cur:
@@ -66,7 +63,7 @@ async def update_slot(slot_id: int, slot: SlotUpdate) -> dict:
         return await get_slot(slot_id)
     set_clause = ", ".join(f"{k} = ?" for k in fields)
     values = list(fields.values()) + [slot_id]
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with connect() as db:
         result = await db.execute(
             f"UPDATE schedule_slots SET {set_clause} WHERE id = ?", values
         )
@@ -78,7 +75,7 @@ async def update_slot(slot_id: int, slot: SlotUpdate) -> dict:
 
 @router.delete("/slots/{slot_id}", status_code=204)
 async def delete_slot(slot_id: int) -> None:
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with connect() as db:
         result = await db.execute(
             "DELETE FROM schedule_slots WHERE id = ?", (slot_id,)
         )
@@ -90,8 +87,7 @@ async def delete_slot(slot_id: int) -> None:
 @router.get("/queue")
 async def get_queue() -> list[dict]:
     """承認済み・投稿待ちの下書きをキュー順に返す。"""
-    async with aiosqlite.connect(config.DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
+    async with connect() as db:
         async with db.execute(
             """
             SELECT * FROM tweet_drafts

@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-import aiosqlite
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-import config
+from api.db import connect
 
 router = APIRouter()
 
@@ -37,8 +36,7 @@ async def list_appeals(game_id: str | None = None) -> list[dict]:
         query += " WHERE game_id = ?"
         params.append(game_id)
     query += " ORDER BY priority DESC, last_used_at ASC"
-    async with aiosqlite.connect(config.DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
+    async with connect() as db:
         async with db.execute(query, params) as cur:
             rows = await cur.fetchall()
     return [dict(row) for row in rows]
@@ -46,8 +44,7 @@ async def list_appeals(game_id: str | None = None) -> list[dict]:
 
 @router.get("/{appeal_id}")
 async def get_appeal(appeal_id: int) -> dict:
-    async with aiosqlite.connect(config.DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
+    async with connect() as db:
         async with db.execute(
             "SELECT * FROM appeal_points WHERE id = ?", (appeal_id,)
         ) as cur:
@@ -59,7 +56,7 @@ async def get_appeal(appeal_id: int) -> dict:
 
 @router.post("", status_code=201)
 async def create_appeal(appeal: AppealCreate) -> dict:
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute(
             """
             INSERT INTO appeal_points (game_id, category, priority, title, content, promo_tips)
@@ -84,7 +81,7 @@ async def update_appeal(appeal_id: int, appeal: AppealUpdate) -> dict:
         return await get_appeal(appeal_id)
     set_clause = ", ".join(f"{k} = ?" for k in fields)
     values = list(fields.values()) + [appeal_id]
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with connect() as db:
         result = await db.execute(
             f"UPDATE appeal_points SET {set_clause} WHERE id = ?", values
         )
@@ -96,7 +93,7 @@ async def update_appeal(appeal_id: int, appeal: AppealUpdate) -> dict:
 
 @router.delete("/{appeal_id}", status_code=204)
 async def delete_appeal(appeal_id: int) -> None:
-    async with aiosqlite.connect(config.DB_PATH) as db:
+    async with connect() as db:
         result = await db.execute(
             "DELETE FROM appeal_points WHERE id = ?", (appeal_id,)
         )

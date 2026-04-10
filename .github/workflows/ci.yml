@@ -68,9 +68,9 @@ jobs:
           cache-to: type=gha,mode=max,scope=frontend
 
       # ---- API 起動スモークテスト ----
-      # ビルド済みイメージを使用（--no-build）して API コンテナを起動
+      # CI でビルドしたイメージ（game-promo-hub-api:latest）を Compose が参照して起動する
       - name: Start API service
-        run: docker compose up -d --no-build api
+        run: docker compose up -d api
 
       - name: Wait for API health endpoint
         run: |
